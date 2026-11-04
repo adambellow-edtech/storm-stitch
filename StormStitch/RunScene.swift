@@ -26,6 +26,7 @@ final class RunScene: SKScene {
         let kind: ObjectKind
         let lane: Int
         var z: Double
+        var prevZ: Double
         let y: Double
         var resolved = false
 
@@ -34,6 +35,7 @@ final class RunScene: SKScene {
             self.kind = kind
             self.lane = lane
             self.z = z
+            self.prevZ = z
             self.y = y
         }
     }
@@ -106,6 +108,7 @@ final class RunScene: SKScene {
     private var trackedTouch: UITouch?
     private var touchStart = CGPoint.zero
     private var didSwipe = false
+    private var lastSwipeDir = 0
 
     // MARK: Setup
 
@@ -440,6 +443,7 @@ final class RunScene: SKScene {
     override func update(_ currentTime: TimeInterval) {
         let dt = lastUpdate == 0 ? 0 : min(currentTime - lastUpdate, 1.0 / 30.0)
         lastUpdate = currentTime
+        haptics.enabled = tuning.hapticsOn
         if state == .running {
             step(dt)
         }
@@ -454,6 +458,7 @@ final class RunScene: SKScene {
         distance += move
 
         for obj in objects {
+            obj.prevZ = obj.z
             obj.z -= move
         }
 
@@ -609,18 +614,21 @@ final class RunScene: SKScene {
         let playerTop = playerY + (slideTimer > 0 ? 0.45 : 1.0)
 
         for obj in objects where !obj.resolved {
-            if obj.z <= -0.35 {
+            // Test the span covered this frame, so fast speeds can't skip a hazard.
+            let crossed = obj.prevZ >= -0.35 && obj.z < 0.35
+            if obj.z <= -0.35 && !crossed {
                 obj.resolved = true
                 continue
             }
-            guard obj.z < 0.35 else { continue }
+            guard crossed else { continue }
+            if obj.z <= -0.35 { obj.resolved = true }
 
             let objX = Double(obj.lane) * laneWidth
             guard abs(objX - playerX) < 0.55 else { continue }
 
             switch obj.kind {
             case .spool:
-                if abs((playerY + 0.5) - obj.y) < 0.85 {
+                if abs((playerY + 0.5) - obj.y) < 0.5 {
                     collect(obj)
                 }
             case .hazard(let hazard):
@@ -729,6 +737,7 @@ final class RunScene: SKScene {
         trackedTouch = touch
         touchStart = touch.location(in: self)
         didSwipe = false
+        lastSwipeDir = 0
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -741,7 +750,12 @@ final class RunScene: SKScene {
         didSwipe = true
         touchStart = point  // allows chained swipes without lifting the finger
         if abs(dx) > abs(dy) {
-            moveLane(dx > 0 ? 1 : -1)
+            // One lane per flick; reversing direction mid-touch moves back.
+            let dir = dx > 0 ? 1 : -1
+            if dir != lastSwipeDir {
+                moveLane(dir)
+                lastSwipeDir = dir
+            }
         } else if dy > 0 {
             jump()
         } else {
