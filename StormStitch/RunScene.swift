@@ -106,6 +106,9 @@ final class RunScene: SKScene {
     private var cloudSprites: [SKSpriteNode] = []
     private var hillsGray = SKSpriteNode()
     private var hillsColor = SKSpriteNode()
+    /// Illustrated sky-and-hills backdrop; the gray version shows until color floods in.
+    private var backdropGray: SKSpriteNode?
+    private var backdropColor: SKSpriteNode?
     private let groundLayer = SKNode()
     private let colorCrop = SKCropNode()
     private let maskRoot = SKNode()
@@ -419,6 +422,35 @@ final class RunScene: SKScene {
             hills.xScale = hillScale
             hills.yScale = min(hillScale, 0.9)
             hills.position = CGPoint(x: w / 2, y: horizonY - 22)
+        }
+
+        // Illustrated backdrop replaces the code-drawn sky, sun, clouds and hills when present.
+        if let grayImage = UIImage(named: "backdrop-gray"), let colorImage = UIImage(named: "backdrop-color") {
+            if backdropGray == nil {
+                let gray = SKSpriteNode(texture: SKTexture(image: grayImage))
+                gray.zPosition = -190
+                worldRoot.addChild(gray)
+                backdropGray = gray
+                let color = SKSpriteNode(texture: SKTexture(image: colorImage))
+                color.zPosition = -189
+                color.alpha = 0
+                worldRoot.addChild(color)
+                backdropColor = color
+            }
+            let backWidth = w * 1.35
+            let backHeight = backWidth * grayImage.size.height / grayImage.size.width
+            for backdrop in [backdropGray, backdropColor].compactMap({ $0 }) {
+                backdrop.size = CGSize(width: backWidth, height: backHeight)
+                // The hill crests sit about 72% of the way down the picture; put them on the horizon.
+                backdrop.anchorPoint = CGPoint(x: 0.5, y: 0.28)
+                backdrop.position = CGPoint(x: w / 2, y: horizonY)
+            }
+            // Fill any sky above the picture with its top color.
+            skyGray.color = UIColor(hex: 0xA9ABB6)
+            skyBlue.color = UIColor(hex: 0x4A9BE8)
+            for node in [hillsGray, hillsColor, sunSprite] + cloudSprites {
+                node.isHidden = true
+            }
         }
 
         groundLayer.removeAllChildren()
@@ -1660,6 +1692,7 @@ final class RunScene: SKScene {
         let colorAmount = min(1, m * 1.2)
         skyBlue.alpha = colorAmount
         hillsColor.alpha = colorAmount
+        backdropColor?.alpha = colorAmount
         sunSprite.alpha = max(0, (colorAmount - 0.3) / 0.7)
         sunSprite.zRotation = CGFloat(clock * 0.15)
         for (i, cloud) in cloudSprites.enumerated() {
