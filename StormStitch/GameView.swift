@@ -21,18 +21,20 @@ struct GameView: View {
                     .ignoresSafeArea()
                 }
 
+                #if DEBUG
+                // Developer tuning panel: debug builds only, kept small and faint.
                 Button {
                     withAnimation(.spring(duration: 0.3)) { showTuning.toggle() }
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .opacity(0.35)
                 }
                 .accessibilityLabel("Feel tuning")
-                .padding(.leading, 12)
-                .padding(.top, 8)
+                .padding(.leading, 4)
+                #endif
 
                 if showTuning {
                     TuningPanel(tuning: tuning) {

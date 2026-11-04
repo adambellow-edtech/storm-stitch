@@ -143,6 +143,8 @@ final class RunScene: SKScene {
     private var timerSprite = SKSpriteNode()
     private var spoolIcon = SKSpriteNode()
     private var spoolCountSprite = SKSpriteNode()
+    private let timerPill = SKSpriteNode()
+    private let spoolPill = SKSpriteNode()
     private var hearts: [SKSpriteNode] = []
     private let meterBack = SKShapeNode()
     private let meterFill = SKSpriteNode(color: Palette.stitchGold, size: CGSize(width: 10, height: 10))
@@ -403,6 +405,17 @@ final class RunScene: SKScene {
         timerSprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         hud.addChild(timerSprite)
 
+        // Paper pills behind the timer and the spool count.
+        for pill in [timerPill, spoolPill] {
+            if let image = UIImage(named: "ui-pill") {
+                pill.texture = SKTexture(image: image)
+            } else {
+                pill.color = UIColor(white: 1, alpha: 0.85)
+            }
+            pill.zPosition = -1
+            hud.addChild(pill)
+        }
+
         meterBack.fillColor = UIColor(white: 1, alpha: 0.9)
         meterBack.strokeColor = Palette.ink
         meterBack.lineWidth = 3
@@ -532,10 +545,14 @@ final class RunScene: SKScene {
         for (i, heart) in hearts.enumerated() {
             heart.position = CGPoint(x: w - 30 - CGFloat(2 - i) * 38, y: top)
         }
-        spoolCountSprite.position = CGPoint(x: w - 14, y: top - 40)
-        spoolIcon.position = CGPoint(x: w - 34, y: top - 40)
+        spoolCountSprite.position = CGPoint(x: w - 26, y: top - 42)
+        spoolIcon.position = CGPoint(x: w - 46, y: top - 42)
         timerSprite.position = CGPoint(x: w / 2, y: top)
-        meterWidth = min(200, w * 0.46)
+        timerPill.size = CGSize(width: 116, height: 39)
+        timerPill.position = CGPoint(x: w / 2, y: top)
+        spoolPill.size = CGSize(width: 112, height: 37)
+        spoolPill.position = CGPoint(x: w - 66, y: top - 42)
+        meterWidth = min(170, w * 0.36)
         meterBack.path = CGPath(
             roundedRect: CGRect(x: -meterWidth / 2 - 4, y: -11, width: meterWidth + 8, height: 22),
             cornerWidth: 11, cornerHeight: 11, transform: nil
@@ -581,114 +598,144 @@ final class RunScene: SKScene {
 
     // MARK: Screens
 
+    /// A sprite from a bundled PNG at its native pixel size; callers set the display size.
+    private func imageSprite(_ name: String) -> SKSpriteNode? {
+        guard let image = UIImage(named: name) else { return nil }
+        let texture = SKTexture(image: image)
+        texture.filteringMode = .linear
+        return SKSpriteNode(texture: texture, size: image.size)
+    }
+
+    /// A paper button with a label, sized by width.
+    private func paperButton(_ label: String, width: CGFloat) -> SKNode {
+        let node = SKNode()
+        let height = width * 300.0 / 720.0
+        if let paper = imageSprite("ui-button") {
+            paper.size = CGSize(width: width, height: height)
+            node.addChild(paper)
+        } else {
+            let panel = SKShapeNode(rect: CGRect(x: -width / 2, y: -height / 2, width: width, height: height), cornerRadius: height / 2)
+            panel.fillColor = Palette.paper
+            panel.strokeColor = .white
+            panel.lineWidth = 5
+            node.addChild(panel)
+        }
+        let text = art.text(label, size: height * 0.34, fill: Palette.stitchGold)
+        let textSprite = SKSpriteNode(texture: text.texture, size: text.size)
+        textSprite.position = CGPoint(x: 0, y: -height * 0.02)
+        textSprite.zPosition = 1
+        node.addChild(textSprite)
+        node.run(.repeatForever(.sequence([
+            .scale(to: 1.05, duration: 0.55),
+            .scale(to: 1.0, duration: 0.55)
+        ])))
+        return node
+    }
+
     private func showTitle() {
         state = .title
         audio.setMusic(playing: false)
         overlay.removeAllChildren()
+        hud.removeAllActions()
         hud.alpha = 0
         let w = size.width
         let h = size.height
-
-        let logoSize = min(56, w * 0.135)
-        let storm = art.text("STORM", size: logoSize, fill: .white)
-        let stitch = art.text("STITCH", size: logoSize, fill: Palette.stitchGold)
-        let gap: CGFloat = 4
-        let total = storm.size.width + stitch.size.width + gap
-        let logoY = h * 0.80
-        let stormSprite = SKSpriteNode(texture: storm.texture, size: storm.size)
-        stormSprite.position = CGPoint(x: w / 2 - total / 2 + storm.size.width / 2, y: logoY)
-        let stitchSprite = SKSpriteNode(texture: stitch.texture, size: stitch.size)
-        stitchSprite.position = CGPoint(x: w / 2 + total / 2 - stitch.size.width / 2, y: logoY)
-        overlay.addChild(stormSprite)
-        overlay.addChild(stitchSprite)
-        for (i, sprite) in [stormSprite, stitchSprite].enumerated() {
-            sprite.setScale(0.6)
-            sprite.alpha = 0
-            sprite.run(.sequence([
-                .wait(forDuration: 0.1 + Double(i) * 0.12),
-                .group([.fadeIn(withDuration: 0.15), .scale(to: 1, duration: 0.35)])
-            ]))
-            sprite.run(.repeatForever(.sequence([
-                .moveBy(x: 0, y: 5, duration: 1.2 + Double(i) * 0.2),
-                .moveBy(x: 0, y: -5, duration: 1.2 + Double(i) * 0.2)
-            ])))
-        }
-
-        let underline = SKShapeNode()
-        let line = CGMutablePath()
-        line.move(to: CGPoint(x: -total / 2 + 10, y: 0))
-        line.addLine(to: CGPoint(x: total / 2 - 10, y: 0))
-        underline.path = line.copy(dashingWithPhase: 0, lengths: [16, 10])
-        underline.strokeColor = Palette.stitchGold
-        underline.lineWidth = 5
-        underline.lineCap = .round
-        underline.position = CGPoint(x: w / 2, y: logoY - logoSize * 0.72)
-        overlay.addChild(underline)
-
-        let tagline = art.text("Outrun the storm. Stitch the world back.", size: min(16, w * 0.04), fill: .white)
-        let tagSprite = SKSpriteNode(texture: tagline.texture, size: tagline.size)
-        tagSprite.position = CGPoint(x: w / 2, y: logoY - logoSize * 1.25)
-        overlay.addChild(tagSprite)
-
-        let prompt = art.text("Tap to run", size: 26, fill: Palette.stitchGold)
-        let promptSprite = SKSpriteNode(texture: prompt.texture, size: prompt.size)
-        promptSprite.position = CGPoint(x: w / 2, y: h * 0.2)
-        promptSprite.run(.repeatForever(.sequence([
-            .scale(to: 1.08, duration: 0.5),
-            .scale(to: 1.0, duration: 0.5)
-        ])))
-        overlay.addChild(promptSprite)
-
-        let best = UserDefaults.standard.integer(forKey: "bestSpools")
-        if best > 0 {
-            let bestArt = art.text("Best: \(best) spools", size: 15, fill: .white)
-            let bestSprite = SKSpriteNode(texture: bestArt.texture, size: bestArt.size)
-            bestSprite.position = CGPoint(x: w / 2, y: h * 0.2 - 40)
-            overlay.addChild(bestSprite)
-        }
-
-        let help = art.text("Swipe to change lanes  \u{00B7}  Tap to jump  \u{00B7}  Swipe down to slide", size: min(12, w * 0.03), fill: UIColor(white: 1, alpha: 0.95))
-        let helpSprite = SKSpriteNode(texture: help.texture, size: help.size)
-        helpSprite.position = CGPoint(x: w / 2, y: h * 0.2 - 72)
-        overlay.addChild(helpSprite)
+        let bottomInset = max(view?.safeAreaInsets.bottom ?? 0, 16)
 
         resetWorld()
         runSpeed = titleSpeed
+
+        if let card = imageSprite("title-card"), let cardTexture = card.texture {
+            // Fit the title art to the screen width, top aligned so the logo clears the island.
+            let fitted = CGSize(width: w, height: card.size.height * w / card.size.width)
+            card.size = fitted
+            card.anchorPoint = CGPoint(x: 0.5, y: 1)
+            card.position = CGPoint(x: w / 2, y: h)
+            overlay.addChild(card)
+            // Taller screens: extend the paper road by mirroring the bottom of the art, so there's no seam.
+            let gap = h - fitted.height
+            if gap > 0 {
+                let stripTexture = SKTexture(rect: CGRect(x: 0, y: 0, width: 1, height: 0.15), in: cardTexture)
+                let strip = SKSpriteNode(texture: stripTexture, size: CGSize(width: w, height: gap + 2))
+                strip.anchorPoint = CGPoint(x: 0.5, y: 0)
+                strip.position = CGPoint(x: w / 2, y: gap + 1)
+                strip.yScale = -1
+                overlay.addChild(strip)
+            }
+            card.alpha = 0
+            card.run(.fadeIn(withDuration: 0.35))
+        } else {
+            let logo = art.text("STORM STITCH", size: min(44, w * 0.1), fill: Palette.stitchGold)
+            let logoSprite = SKSpriteNode(texture: logo.texture, size: logo.size)
+            logoSprite.position = CGPoint(x: w / 2, y: h * 0.78)
+            overlay.addChild(logoSprite)
+        }
+
+        let buttonWidth = min(270, w * 0.66)
+        let button = paperButton("Tap to run", width: buttonWidth)
+        let buttonY = bottomInset + 64 + buttonWidth * 300.0 / 720.0 / 2
+        button.position = CGPoint(x: w / 2, y: buttonY)
+        button.zPosition = 2
+        overlay.addChild(button)
+
+        let best = UserDefaults.standard.integer(forKey: "bestSpools")
+        if best > 0 {
+            let bestArt = art.text("Best: \(best) spools", size: 17, fill: .white)
+            let bestSprite = SKSpriteNode(texture: bestArt.texture, size: bestArt.size)
+            bestSprite.position = CGPoint(x: w / 2, y: buttonY + buttonWidth * 0.29)
+            bestSprite.zPosition = 2
+            overlay.addChild(bestSprite)
+        }
+
+        let help = art.text("Swipe to change lanes  \u{00B7}  Tap to jump  \u{00B7}  Swipe down to slide",
+                            size: min(12, w * 0.03), fill: .white)
+        let helpSprite = SKSpriteNode(texture: help.texture, size: help.size)
+        helpSprite.position = CGPoint(x: w / 2, y: bottomInset + 26)
+        helpSprite.zPosition = 2
+        overlay.addChild(helpSprite)
     }
 
     private func showResults(caught: Bool, finished: Bool) {
         overlay.removeAllChildren()
+        hud.removeAllActions()
+        hud.run(.fadeOut(withDuration: 0.25))
         let w = size.width
         let h = size.height
-        let cardW = min(w - 40, 340)
-        let cardH: CGFloat = 330
+        let topInset = max(view?.safeAreaInsets.top ?? 0, 20)
+        let cardW = min(w - 16, 390)
+        let cardH = cardW * 855.0 / 1140.0
+        let k = cardW / 380
 
         let card = SKNode()
-        card.position = CGPoint(x: w / 2, y: h * 0.62)
+        card.position = CGPoint(x: w / 2, y: h - topInset - 12 - cardH / 2)
         overlay.addChild(card)
 
-        let shadow = SKShapeNode(rect: CGRect(x: -cardW / 2, y: -cardH / 2 - 8, width: cardW, height: cardH), cornerRadius: 26)
-        shadow.fillColor = UIColor(white: 0, alpha: 0.28)
-        shadow.strokeColor = .clear
-        card.addChild(shadow)
-        let panel = SKShapeNode(rect: CGRect(x: -cardW / 2, y: -cardH / 2, width: cardW, height: cardH), cornerRadius: 26)
-        panel.fillColor = Palette.paper
-        panel.strokeColor = .white
-        panel.lineWidth = 6
-        card.addChild(panel)
+        if let paper = imageSprite("ui-card") {
+            paper.size = CGSize(width: cardW, height: cardH)
+            card.addChild(paper)
+        } else {
+            let panel = SKShapeNode(rect: CGRect(x: -cardW / 2, y: -cardH / 2, width: cardW, height: cardH), cornerRadius: 24)
+            panel.fillColor = Palette.paper
+            panel.strokeColor = .white
+            panel.lineWidth = 6
+            card.addChild(panel)
+        }
 
         let titleText = finished ? "Run complete!" : (caught ? "Caught by the storm!" : "Out of hearts!")
-        let title = art.text(titleText, size: 26, fill: finished ? Palette.stitchGold : .white)
+        let title = art.text(titleText, size: 24 * k, fill: finished ? Palette.stitchGold : .white)
         let titleSprite = SKSpriteNode(texture: title.texture, size: title.size)
-        titleSprite.position = CGPoint(x: 0, y: cardH / 2 - 42)
+        titleSprite.position = CGPoint(x: 0, y: cardH * 0.25)
+        titleSprite.zPosition = 1
         card.addChild(titleSprite)
 
         let earned = [finished, hitsTaken == 0 && finished, fullyStitched]
         let labels = ["Finish", "No hits", "Stitched"]
+        let starY = cardH * 0.07
         for i in 0..<3 {
             let starArt = art.star(filled: earned[i])
-            let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 58, height: 58))
-            star.position = CGPoint(x: CGFloat(i - 1) * 76, y: cardH / 2 - 108)
+            let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 46 * k, height: 46 * k))
+            star.position = CGPoint(x: CGFloat(i - 1) * 74 * k, y: starY)
+            star.zPosition = 1
             star.setScale(0)
             star.run(.sequence([
                 .wait(forDuration: 0.25 + Double(i) * 0.18),
@@ -702,60 +749,78 @@ final class RunScene: SKScene {
                 }
             ]))
             card.addChild(star)
-            let caption = art.text(labels[i], size: 11, fill: .white)
+            let caption = art.text(labels[i], size: 10.5 * k, fill: .white)
             let captionSprite = SKSpriteNode(texture: caption.texture, size: caption.size)
-            captionSprite.position = CGPoint(x: star.position.x, y: star.position.y - 40)
+            captionSprite.position = CGPoint(x: star.position.x, y: starY - 31 * k)
+            captionSprite.zPosition = 1
             card.addChild(captionSprite)
         }
 
+        let bestBefore = UserDefaults.standard.integer(forKey: "bestSpools")
+        let isNewBest = spools > bestBefore
+        if isNewBest { UserDefaults.standard.set(spools, forKey: "bestSpools") }
+
         let seconds = Int(elapsed)
-        let rows = [
+        let cells = [
             ("Spools", "\(spools)"),
             ("Distance", "\(Int(distance)) m"),
+            ("Time", "\(seconds / 60):\(String(format: "%02d", seconds % 60))"),
             ("Stitched", "\(Int(meter * 100))%"),
             ("Best streak", "\(bestStreak)"),
-            ("Time", "\(seconds / 60):\(String(format: "%02d", seconds % 60))")
+            ("Best ever", "\(max(spools, bestBefore))")
         ]
-        var y = cardH / 2 - 182
-        for (name, value) in rows {
-            let left = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
-            left.text = name
-            left.fontSize = 16
-            left.fontColor = Palette.stormDark
-            left.horizontalAlignmentMode = .left
-            left.verticalAlignmentMode = .center
-            left.position = CGPoint(x: -cardW / 2 + 28, y: y)
-            card.addChild(left)
-            let right = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-            right.text = value
-            right.fontSize = 17
-            right.fontColor = Palette.ink
-            right.horizontalAlignmentMode = .right
-            right.verticalAlignmentMode = .center
-            right.position = CGPoint(x: cardW / 2 - 28, y: y)
-            card.addChild(right)
-            y -= 24
+        for (index, cell) in cells.enumerated() {
+            let column = CGFloat(index % 3 - 1)
+            let rowY = index < 3 ? -cardH * 0.13 : -cardH * 0.29
+            let value = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            value.text = cell.1
+            value.fontSize = 20 * k
+            value.fontColor = Palette.ink
+            value.verticalAlignmentMode = .center
+            value.position = CGPoint(x: column * cardW * 0.28, y: rowY)
+            value.zPosition = 1
+            card.addChild(value)
+            let label = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+            label.text = cell.0
+            label.fontSize = 11 * k
+            label.fontColor = Palette.stormDark
+            label.verticalAlignmentMode = .center
+            label.position = CGPoint(x: value.position.x, y: rowY - 17 * k)
+            label.zPosition = 1
+            card.addChild(label)
         }
 
-        let best = UserDefaults.standard.integer(forKey: "bestSpools")
-        if spools > best {
-            UserDefaults.standard.set(spools, forKey: "bestSpools")
-            let newBest = art.text("New best!", size: 16, fill: Palette.heart)
+        if isNewBest {
+            let newBest = art.text("New best!", size: 17 * k, fill: Palette.heart)
             let newBestSprite = SKSpriteNode(texture: newBest.texture, size: newBest.size)
-            newBestSprite.position = CGPoint(x: cardW / 2 - 50, y: cardH / 2 + 6)
-            newBestSprite.zRotation = -0.18
+            newBestSprite.position = CGPoint(x: cardW / 2 - 52 * k, y: cardH / 2 - 14 * k)
+            newBestSprite.zRotation = -0.2
+            newBestSprite.zPosition = 2
             card.addChild(newBestSprite)
+            newBestSprite.run(.repeatForever(.sequence([.scale(to: 1.12, duration: 0.4), .scale(to: 1, duration: 0.4)])))
         }
 
-        let prompt = art.text("Tap to run again", size: 22, fill: Palette.stitchGold)
-        let promptSprite = SKSpriteNode(texture: prompt.texture, size: prompt.size)
-        promptSprite.position = CGPoint(x: w / 2, y: h * 0.62 - cardH / 2 + 22)
-        promptSprite.run(.repeatForever(.sequence([.scale(to: 1.08, duration: 0.5), .scale(to: 1, duration: 0.5)])))
-        overlay.addChild(promptSprite)
+        let buttonWidth = min(240, w * 0.6)
+        let button = paperButton("Run again", width: buttonWidth)
+        button.position = CGPoint(x: w / 2, y: card.position.y - cardH / 2 - 6 - buttonWidth * 300.0 / 720.0 / 2)
+        overlay.addChild(button)
 
         card.setScale(0.7)
         card.alpha = 0
         card.run(.group([.fadeIn(withDuration: 0.15), .scale(to: 1, duration: 0.25)]))
+        button.alpha = 0
+        button.run(.sequence([.wait(forDuration: 0.5), .fadeIn(withDuration: 0.2)]))
+    }
+
+    /// Fades out whatever is on the overlay instead of cutting it.
+    private func fadeOverlay() {
+        let leaving = SKNode()
+        leaving.zPosition = overlay.zPosition
+        addChild(leaving)
+        for child in overlay.children {
+            child.move(toParent: leaving)
+        }
+        leaving.run(.sequence([.fadeOut(withDuration: 0.35), .removeFromParent()]))
     }
 
     // MARK: Run flow
@@ -806,15 +871,18 @@ final class RunScene: SKScene {
         var z = 2.0
         while z < spawnZ {
             spawnScenery(atZ: z)
-            z += 1.8
+            z += 1.3
         }
     }
 
     private func startRun() {
-        overlay.removeAllChildren()
-        resetWorld()
+        let fromTitle = state == .title
+        fadeOverlay()
+        if !fromTitle { resetWorld() }
+        distance = 0
         state = .running
         runSpeed = tuning.startSpeed
+        hud.removeAllActions()
         hud.alpha = 1
         shownSeconds = -1
         shownSpools = -1
@@ -833,7 +901,6 @@ final class RunScene: SKScene {
         audio.setMusic(playing: false)
         audio.play(.gameOver)
         haptics.gameOver()
-        hud.run(.fadeAlpha(to: 0.4, duration: 0.3))
         showResults(caught: caught, finished: false)
     }
 
@@ -843,7 +910,6 @@ final class RunScene: SKScene {
         audio.setMusic(playing: false)
         audio.play(.finish)
         haptics.success()
-        hud.run(.fadeAlpha(to: 0.4, duration: 0.3))
         showResults(caught: false, finished: true)
     }
 
@@ -972,7 +1038,7 @@ final class RunScene: SKScene {
         nextSceneryIn -= move
         while nextSceneryIn <= 0 {
             spawnScenery(atZ: spawnZ + nextSceneryIn)
-            nextSceneryIn += 1.8
+            nextSceneryIn += 1.3
         }
 
         nextPatchIn -= move
@@ -1088,10 +1154,10 @@ final class RunScene: SKScene {
     }
 
     private func spawnScenery(atZ z: Double) {
-        let count = Int.random(in: 1...2)
+        let count = Int.random(in: 2...3)
         for _ in 0..<count {
             let side: Double = Bool.random() ? -1 : 1
-            let x = side * Double.random(in: 2.3...5.2)
+            let x = side * Double.random(in: 2.0...4.6)
             let roll = Double.random(in: 0...1)
             let kind: SceneryKind = roll < 0.4 ? .tree : (roll < 0.7 ? .bush : .flower)
             let variant = Int.random(in: 0...2)
@@ -1753,7 +1819,7 @@ final class RunScene: SKScene {
             // The eyes ride the storm line; the wall swells as it closes in.
             stormArt.setScale(1 + closeness * 0.3)
             stormArt.position = CGPoint(x: size.width / 2 + CGFloat(cos(clock * 1.1) * 10),
-                                        y: visible + 10 + CGFloat(sin(clock * 3.1) * 5))
+                                        y: visible - 8 + CGFloat(sin(clock * 3.1) * 5))
             stormFill.position = CGPoint(x: stormArt.position.x, y: stormArt.frame.minY + 2)
             stormFill.xScale = stormArt.xScale
         }
@@ -1781,7 +1847,7 @@ final class RunScene: SKScene {
             let text = art.text("\(spools)", size: 22, fill: Palette.stitchGold)
             spoolCountSprite.texture = text.texture
             spoolCountSprite.size = text.size
-            spoolIcon.position.x = size.width - 14 - text.size.width - 12
+            spoolIcon.position.x = size.width - 26 - text.size.width - 14
             if grew {
                 spoolIcon.removeAction(forKey: "bump")
                 spoolIcon.run(.sequence([.scale(to: 1.3, duration: 0.05), .scale(to: 1, duration: 0.1)]), withKey: "bump")
