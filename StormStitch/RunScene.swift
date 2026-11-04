@@ -456,6 +456,7 @@ final class RunScene: SKScene {
         } else {
             pausePaper.color = UIColor(white: 1, alpha: 0.85)
         }
+        pausePaper.centerRect = CGRect(x: 0.17, y: 0, width: 0.66, height: 1)
         pausePaper.size = CGSize(width: 54, height: 38)
         pauseButton.addChild(pausePaper)
         for x in [CGFloat(-5.5), 5.5] {
@@ -958,6 +959,8 @@ final class RunScene: SKScene {
         playerY = 0
         velocityY = 0
         slideTimer = 0
+        hitPoseTimer = 0
+        eyePop = 0
         landSquash = 0
         jumpBuffer = 0
         trackedTouch = nil
@@ -1956,13 +1959,13 @@ final class RunScene: SKScene {
                 far.xScale = -swell
                 far.yScale = swell
                 far.position = CGPoint(x: size.width / 2 + CGFloat(sin(clock * 0.5) * 26) - lane * 6,
-                                       y: stormArt.position.y + far.size.height * 0.16 + CGFloat(sin(clock * 1.3) * 4))
+                                       y: stormArt.position.y + far.frame.height * 0.16 + CGFloat(sin(clock * 1.3) * 4))
             }
             if let near = stormNear {
                 near.xScale = -swell
                 near.yScale = swell
                 near.position = CGPoint(x: size.width / 2 + CGFloat(sin(clock * 1.7) * 18) - lane * 28,
-                                        y: stormArt.frame.minY - near.size.height * 0.44 + CGFloat(sin(clock * 2.4) * 6))
+                                        y: stormArt.frame.minY - near.frame.height * 0.44 + CGFloat(sin(clock * 2.4) * 6))
             }
             let lowest = min(stormArt.frame.minY, stormNear?.frame.minY ?? stormArt.frame.minY)
             stormFill.position = CGPoint(x: stormArt.position.x, y: lowest + 2)
@@ -2076,6 +2079,7 @@ final class RunScene: SKScene {
     // MARK: Pause
 
     @objc private func appWillResignActive() {
+        if state == .paused && resumeCountdown > 0 { state = .running }
         if state == .running { pauseGame() }
     }
 
