@@ -1021,7 +1021,7 @@ final class RunScene: SKScene {
     }
 
     private func addSpool(lane: Int, z: Double, y: Double) {
-        let spoolArt = illustrated("spool", width: 50) ?? art.spool
+        let spoolArt = illustrated("spool", width: 58) ?? art.spool
         let sprite = SKSpriteNode(texture: spoolArt.texture, size: spoolArt.size)
         sprite.alpha = 0
         objectLayer.addChild(sprite)
