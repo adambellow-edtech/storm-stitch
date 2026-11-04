@@ -1053,7 +1053,11 @@ final class RunScene: SKScene {
                 groundY = 68
                 scale = 0.85
             }
-            sprite.anchorPoint = CGPoint(x: 0.5, y: (pick.size.height - groundY) / pick.size.height)
+            if illustratedScenery(kind, variant: variant, colored: colored) != nil {
+                sprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
+            } else {
+                sprite.anchorPoint = CGPoint(x: 0.5, y: (pick.size.height - groundY) / pick.size.height)
+            }
             sprite.alpha = 0
             objectLayer.addChild(sprite)
             let thing = Thing(kind: .scenery(kind, variant: variant), sprite: sprite, worldScale: scale,
@@ -1063,7 +1067,35 @@ final class RunScene: SKScene {
         }
     }
 
+    /// Illustrated scenery, used only when both the color and gray versions exist,
+    /// so a stitched object swaps to a matching picture.
+    private func illustratedScenery(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art? {
+        let colorName: String
+        let grayName: String
+        let width: CGFloat
+        switch kind {
+        case .tree:
+            colorName = "tree-color"
+            grayName = "tree-gray"
+            width = 120
+        case .bush:
+            colorName = "bush-color"
+            grayName = "bush-gray"
+            width = 110
+        case .flower:
+            colorName = ["flower-pink", "flower-gold", "flower-violet"][variant % 3]
+            grayName = "flower-gray"
+            width = 44
+        }
+        guard let color = illustrated(colorName, width: width),
+              let gray = illustrated(grayName, width: width) else { return nil }
+        return colored ? color : gray
+    }
+
     private func sceneryArt(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art {
+        if let picture = illustratedScenery(kind, variant: variant, colored: colored) {
+            return picture
+        }
         switch kind {
         case .tree: return art.tree(colored: colored)
         case .bush: return art.bush(colored: colored)
