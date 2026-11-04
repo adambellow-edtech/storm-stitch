@@ -1,0 +1,31 @@
+name: StormStitch
+options:
+  bundleIdPrefix: com.adambellow
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+targets:
+  StormStitch:
+    type: application
+    platform: iOS
+    sources:
+      - path: StormStitch
+    info:
+      path: StormStitch/Info.plist
+      properties:
+        CFBundleDisplayName: Storm Stitch
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        CADisableMinimumFrameDurationOnPhone: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.adambellow.stormstitch
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
