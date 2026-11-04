@@ -546,12 +546,12 @@ final class RunScene: SKScene {
             heart.position = CGPoint(x: w - 30 - CGFloat(2 - i) * 38, y: top)
         }
         spoolCountSprite.position = CGPoint(x: w - 26, y: top - 42)
-        spoolIcon.position = CGPoint(x: w - 46, y: top - 42)
+        spoolIcon.position = CGPoint(x: w - 26 - spoolCountSprite.size.width - 14, y: top - 42)
         timerSprite.position = CGPoint(x: w / 2, y: top)
         timerPill.size = CGSize(width: 116, height: 39)
         timerPill.position = CGPoint(x: w / 2, y: top)
-        spoolPill.size = CGSize(width: 112, height: 37)
-        spoolPill.position = CGPoint(x: w - 66, y: top - 42)
+        spoolPill.position.y = top - 42
+        fitSpoolPill()
         meterWidth = min(170, w * 0.36)
         meterBack.path = CGPath(
             roundedRect: CGRect(x: -meterWidth / 2 - 4, y: -11, width: meterWidth + 8, height: 22),
@@ -661,6 +661,8 @@ final class RunScene: SKScene {
                 strip.position = CGPoint(x: w / 2, y: gap + 1)
                 strip.yScale = -1
                 overlay.addChild(strip)
+                strip.alpha = 0
+                strip.run(.fadeIn(withDuration: 0.35))
             }
             card.alpha = 0
             card.run(.fadeIn(withDuration: 0.35))
@@ -1848,6 +1850,7 @@ final class RunScene: SKScene {
             spoolCountSprite.texture = text.texture
             spoolCountSprite.size = text.size
             spoolIcon.position.x = size.width - 26 - text.size.width - 14
+            fitSpoolPill()
             if grew {
                 spoolIcon.removeAction(forKey: "bump")
                 spoolIcon.run(.sequence([.scale(to: 1.3, duration: 0.05), .scale(to: 1, duration: 0.1)]), withKey: "bump")
@@ -1858,6 +1861,14 @@ final class RunScene: SKScene {
             heart.texture = art.heart(full: full).texture
         }
         meterFill.size = CGSize(width: max(0.01, meterWidth * CGFloat(meter)), height: 14)
+    }
+
+    /// Sizes the paper pill to wrap the spool icon and count.
+    private func fitSpoolPill() {
+        let left = spoolIcon.position.x - 14
+        let right = size.width - 26
+        spoolPill.size = CGSize(width: (right - left) + 28, height: 37)
+        spoolPill.position.x = (left + right) / 2
     }
 
     private func easeOutBack(_ t: Double) -> Double {
