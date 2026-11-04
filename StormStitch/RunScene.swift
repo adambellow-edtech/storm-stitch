@@ -80,14 +80,15 @@ final class RunScene: SKScene {
     private let audio = GameAudio.shared
     private let art = PaperArt.shared
 
-    private let camHeight = 1.6
-    private let camBack = 3.2
+    // Camera matched to the K2 gameplay reference: high and behind, long road, runner in the lower third.
+    private let camHeight = 4.8
+    private let camBack = 3.6
     private let laneWidth = 1.0
     private let spawnZ = 46.0
     private let dashSpacing = 3.0
     private let dashLength = 1.3
     private let dashesPerDivider = 26
-    private let rigBaseScale: CGFloat = 0.75
+    private let rigBaseScale: CGFloat = 0.9
     private let landSquashTime = 0.14
     private let jumpBufferTime = 0.12
     private let titleSpeed = 4.0
@@ -116,12 +117,9 @@ final class RunScene: SKScene {
 
     private let playerNode = SKNode()
     private let rig = SKNode()
-    private var body = SKSpriteNode()
-    private var eyes = SKSpriteNode()
-    private var armL = SKSpriteNode()
-    private var armR = SKSpriteNode()
-    private var footL = SKSpriteNode()
-    private var footR = SKSpriteNode()
+    private var brambleSprite = SKSpriteNode()
+    private let brambleBack = SKTexture(imageNamed: "bramble-back")
+    private let brambleFront = SKTexture(imageNamed: "bramble-front")
     private var playerShadow = SKSpriteNode()
 
     private let stormRoot = SKNode()
@@ -189,7 +187,6 @@ final class RunScene: SKScene {
     private var landSquash = 0.0
     private var jumpBuffer = 0.0
     private var runPhase = 0.0
-    private var blinkTimer = 2.0
 
     // MARK: Touch state
 
@@ -308,37 +305,15 @@ final class RunScene: SKScene {
         playerShadow = SKSpriteNode(texture: shadowArt.texture, size: shadowArt.size)
         objectLayer.addChild(playerShadow)
 
-        let bodyArt = art.brambleBody
-        body = SKSpriteNode(texture: bodyArt.texture, size: bodyArt.size)
-        body.anchorPoint = CGPoint(x: 0.5, y: 10.0 / 180.0)
-        body.position = CGPoint(x: 0, y: 13)
-
-        let eyeArt = art.brambleEyes(closed: false)
-        eyes = SKSpriteNode(texture: eyeArt.texture, size: eyeArt.size)
-        eyes.position = CGPoint(x: 2, y: 69)
-        eyes.zPosition = 1
-
-        let armArt = art.brambleArm
-        armL = SKSpriteNode(texture: armArt.texture, size: armArt.size)
-        armL.anchorPoint = CGPoint(x: 0.5, y: 0.82)
-        armL.position = CGPoint(x: -58, y: 64)
-        armL.zPosition = -1
-        armR = SKSpriteNode(texture: armArt.texture, size: armArt.size)
-        armR.anchorPoint = CGPoint(x: 0.5, y: 0.82)
-        armR.position = CGPoint(x: 60, y: 64)
-        armR.zPosition = -1
-
-        let footArt = art.brambleFoot
-        footL = SKSpriteNode(texture: footArt.texture, size: footArt.size)
-        footL.position = CGPoint(x: -23, y: 12)
-        footL.zPosition = -2
-        footR = SKSpriteNode(texture: footArt.texture, size: footArt.size)
-        footR.position = CGPoint(x: 23, y: 12)
-        footR.zPosition = -2
-
-        for part in [footL, footR, armL, armR, body, eyes] {
-            rig.addChild(part)
-        }
+        // Illustrated Bramble: the back view runs (flipped every stride for a two-frame cycle),
+        // the front view greets you on the results card.
+        brambleBack.filteringMode = .linear
+        brambleFront.filteringMode = .linear
+        let height: CGFloat = 120
+        brambleSprite = SKSpriteNode(texture: brambleBack,
+                                     size: CGSize(width: height * 452.0 / 640.0, height: height))
+        brambleSprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
+        rig.addChild(brambleSprite)
         rig.setScale(rigBaseScale)
         playerNode.addChild(rig)
         objectLayer.addChild(playerNode)
@@ -422,7 +397,7 @@ final class RunScene: SKScene {
         let w = size.width
         let h = size.height
 
-        horizonY = h * 0.62
+        horizonY = h * 0.84
         unitK = min(w, h * 0.56) * 0.92
 
         camRig.position = CGPoint(x: w / 2, y: h / 2)
@@ -922,17 +897,6 @@ final class RunScene: SKScene {
         if landSquash > 0 { landSquash -= dt }
         if playerY <= 0 && slideTimer <= 0 {
             runPhase += runSpeed * dt * 0.95
-        }
-        blinkTimer -= dt
-        if blinkTimer <= 0 {
-            blinkTimer = Double.random(in: 2...5)
-            let closed = art.brambleEyes(closed: true)
-            let open = art.brambleEyes(closed: false)
-            eyes.run(.sequence([
-                .setTexture(closed.texture),
-                .wait(forDuration: 0.11),
-                .setTexture(open.texture)
-            ]))
         }
     }
 
@@ -1601,21 +1565,16 @@ final class RunScene: SKScene {
         rig.position = CGPoint(x: 0, y: bob * rigBaseScale)
         rig.zRotation = CGFloat((laneToX - playerX) * -0.35) + (sliding ? 0.25 : 0)
 
-        if airborne {
-            armL.zRotation = -2.4
-            armR.zRotation = 2.4
-            footL.position.y = 18
-            footR.position.y = 18
-        } else if sliding {
-            armL.zRotation = -1.2
-            armR.zRotation = 1.2
-            footL.position.y = 12
-            footR.position.y = 12
+        // Face the camera on the results card; otherwise run away from it.
+        let facing = state == .over ? brambleFront : brambleBack
+        if brambleSprite.texture !== facing {
+            brambleSprite.texture = facing
+        }
+        // Two-frame run cycle: flip the back view on every stride so the raised foot alternates.
+        if state != .over && !airborne && !sliding {
+            brambleSprite.xScale = stride >= 0 ? 1 : -1
         } else {
-            armL.zRotation = CGFloat(stride) * 0.7
-            armR.zRotation = CGFloat(stride) * 0.7
-            footL.position.y = 12 + CGFloat(max(0, stride)) * 14
-            footR.position.y = 12 + CGFloat(max(0, -stride)) * 14
+            brambleSprite.xScale = 1
         }
 
         if invulnerable > 0 && state == .running {
