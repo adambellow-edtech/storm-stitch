@@ -33,7 +33,9 @@ struct GameView: View {
                         .opacity(0.35)
                 }
                 .accessibilityLabel("Feel tuning")
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .padding(.leading, 4)
+                .padding(.bottom, 8)
                 #endif
 
                 if showTuning {

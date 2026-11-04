@@ -9,7 +9,7 @@ final class RunScene: SKScene {
 
     // MARK: Types
 
-    enum State { case title, running, over }
+    enum State { case title, running, paused, over }
 
     enum HazardKind: CaseIterable {
         case low       // eraser: jump over
@@ -108,6 +108,9 @@ final class RunScene: SKScene {
     private var hillsColor = SKSpriteNode()
     /// Illustrated sky-and-hills backdrop; the gray version shows until color floods in.
     private var backdropGray: SKSpriteNode?
+    /// Shader-drawn paper road and ground (gray, and color revealed by stitching).
+    private var texturedGray: SKSpriteNode?
+    private var texturedColor: SKSpriteNode?
     private var backdropColor: SKSpriteNode?
     private let groundLayer = SKNode()
     private let colorCrop = SKCropNode()
@@ -123,6 +126,14 @@ final class RunScene: SKScene {
     private var brambleSprite = SKSpriteNode()
     private let brambleBack = SKTexture(imageNamed: "bramble-back")
     private let brambleFront = SKTexture(imageNamed: "bramble-front")
+    /// Illustrated poses, loaded on first use: name to texture and pixel size.
+    private var poseTextures: [String: (texture: SKTexture, size: CGSize)] = [:]
+    private var currentPose = ""
+    private var hitPoseTimer = 0.0
+    /// Pause button in the HUD, and the 3-2-1 countdown when resuming.
+    private let pauseButton = SKNode()
+    private var resumeCountdown = 0.0
+    private var shownCountdown = 0
     private var playerShadow = SKSpriteNode()
 
     private let stormRoot = SKNode()
@@ -130,6 +141,16 @@ final class RunScene: SKScene {
     private var stormFront = SKSpriteNode()
     /// Illustrated storm wall (eyes included) and the solid cloud base that fills below it.
     private var stormArt: SKSpriteNode?
+    /// Parallax storm layers: a dark one drifting behind, one rolling in front.
+    private var stormFar: SKSpriteNode?
+    private var stormNear: SKSpriteNode?
+    /// The storm's glowing eyes, on their own layer so they can blink, squint and glare.
+    private var stormGlare: SKSpriteNode?
+    private var eyeBlinkTimer = 2.5
+    private var eyeBlinkPhase = -1.0
+    private var eyePop = 0.0
+    private var eyeGloat = false
+    private var eyeDefeated = false
     private let stormFill = SKSpriteNode(color: UIColor(hex: 0x605362), size: CGSize(width: 10, height: 10))
     /// Eye line in the storm picture, measured up from its bottom edge.
     private let stormEyeLine: CGFloat = 0.31
@@ -224,6 +245,8 @@ final class RunScene: SKScene {
             buildStorm()
             buildHUD()
             audio.start()
+            NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive),
+                                                   name: UIApplication.willResignActiveNotification, object: nil)
         }
         layoutScene()
         if size.width > 10 && size.height > 10 { showTitle() }
@@ -351,16 +374,45 @@ final class RunScene: SKScene {
             stormEyes.append(eye)
         }
 
-        if let image = UIImage(named: "storm-wall") {
+        let hasEyeLayer = UIImage(named: "storm-wall-noeyes") != nil && UIImage(named: "storm-eyes") != nil
+        if let image = UIImage(named: hasEyeLayer ? "storm-wall-noeyes" : "storm-wall") {
             let texture = SKTexture(image: image)
             texture.filteringMode = .linear
+
+            // Far layer: mirrored, darker, peeking over the main wall and drifting slowly.
+            let far = SKSpriteNode(texture: texture)
+            far.anchorPoint = CGPoint(x: 0.5, y: stormEyeLine)
+            far.color = Palette.ink
+            far.colorBlendFactor = 0.45
+            far.zPosition = 0.3
+            stormRoot.addChild(far)
+            stormFar = far
+
             let sprite = SKSpriteNode(texture: texture)
             sprite.anchorPoint = CGPoint(x: 0.5, y: stormEyeLine)
             sprite.zPosition = 1
             stormRoot.addChild(sprite)
             stormArt = sprite
+
+            if hasEyeLayer, let eyeImage = UIImage(named: "storm-eyes") {
+                let eyeTexture = SKTexture(image: eyeImage)
+                eyeTexture.filteringMode = .linear
+                let eyes = SKSpriteNode(texture: eyeTexture)
+                eyes.zPosition = 0.1
+                sprite.addChild(eyes)
+                stormGlare = eyes
+            }
+
+            // Near layer: mirrored and lower, rolling across the bottom in front of everything.
+            let near = SKSpriteNode(texture: texture)
+            near.anchorPoint = CGPoint(x: 0.5, y: 0)
+            near.color = Palette.ink
+            near.colorBlendFactor = 0.25
+            near.zPosition = 2
+            stormRoot.addChild(near)
+            stormNear = near
             stormFill.anchorPoint = CGPoint(x: 0.5, y: 1)
-            stormFill.zPosition = 0.9
+            stormFill.zPosition = 0.5
             stormRoot.addChild(stormFill)
             for node in [stormBack, stormFront] + stormEyes {
                 node.isHidden = true
@@ -391,11 +443,30 @@ final class RunScene: SKScene {
 
     private func buildHUD() {
         for _ in 0..<3 {
-            let heartArt = art.heart(full: true)
-            let heart = SKSpriteNode(texture: heartArt.texture, size: CGSize(width: 36, height: 35))
+            let heartArt = illustrated("ui-heart", width: 38) ?? art.heart(full: true)
+            let heart = SKSpriteNode(texture: heartArt.texture, size: CGSize(width: 38, height: 38 * heartArt.size.height / heartArt.size.width))
             hud.addChild(heart)
             hearts.append(heart)
         }
+
+        // Paper pause button, top left.
+        let pausePaper = SKSpriteNode()
+        if let image = UIImage(named: "ui-pill") {
+            pausePaper.texture = SKTexture(image: image)
+        } else {
+            pausePaper.color = UIColor(white: 1, alpha: 0.85)
+        }
+        pausePaper.size = CGSize(width: 54, height: 38)
+        pauseButton.addChild(pausePaper)
+        for x in [CGFloat(-5.5), 5.5] {
+            let bar = SKShapeNode(rect: CGRect(x: x - 3, y: -8, width: 6, height: 16), cornerRadius: 2)
+            bar.fillColor = Palette.ink
+            bar.strokeColor = .clear
+            bar.zPosition = 1
+            pauseButton.addChild(bar)
+        }
+        pauseButton.name = "pause"
+        hud.addChild(pauseButton)
 
         let spoolArt = art.spool
         spoolIcon = SKSpriteNode(texture: spoolArt.texture, size: CGSize(width: 28, height: 30))
@@ -493,6 +564,15 @@ final class RunScene: SKScene {
         dashes.removeAll()
 
         let groundRect = CGSize(width: wide, height: horizonY + h * 0.4)
+        let shaderRect = CGRect(x: w / 2 - wide / 2, y: -h * 0.4, width: wide, height: horizonY + h * 0.4)
+        texturedGray = PaperGround.make(colored: false, rect: shaderRect, horizonY: horizonY, unitK: unitK,
+                                        camHeight: camHeight, camBack: camBack, centerX: w / 2)
+        texturedColor = PaperGround.make(colored: true, rect: shaderRect, horizonY: horizonY, unitK: unitK,
+                                         camHeight: camHeight, camBack: camBack, centerX: w / 2)
+        if let texturedGray, let texturedColor {
+            groundLayer.addChild(texturedGray)
+            colorLayer.addChild(texturedColor)
+        } else {
         let grayGround = SKSpriteNode(color: UIColor(hex: 0x8A8C99), size: groundRect)
         grayGround.anchorPoint = CGPoint(x: 0.5, y: 1)
         grayGround.position = CGPoint(x: w / 2, y: horizonY)
@@ -516,9 +596,10 @@ final class RunScene: SKScene {
             colorRoad.lineWidth = 6
             colorLayer.addChild(colorRoad)
         }
+        }
 
         for _ in 0..<(dashesPerDivider * 2) {
-            let dash = SKSpriteNode(color: UIColor(white: 1, alpha: 0.85), size: CGSize(width: 2, height: 2))
+            let dash = SKSpriteNode(color: UIColor(red: 1, green: 0.98, blue: 0.93, alpha: 0.8), size: CGSize(width: 2, height: 2))
             dashLayer.addChild(dash)
             dashes.append(dash)
         }
@@ -533,8 +614,17 @@ final class RunScene: SKScene {
         stormScraps?.particlePositionRange = CGVector(dx: w, dy: 10)
         if let stormArt, let image = UIImage(named: "storm-wall") {
             let artWidth = w * 1.45
-            stormArt.size = CGSize(width: artWidth, height: artWidth * image.size.height / image.size.width)
-            stormFill.size = CGSize(width: artWidth, height: h)
+            let artHeight = artWidth * image.size.height / image.size.width
+            stormArt.setScale(1)
+            stormArt.size = CGSize(width: artWidth, height: artHeight)
+            stormFar?.setScale(1)
+            stormFar?.size = CGSize(width: artWidth * 1.1, height: artHeight * 1.1)
+            stormNear?.setScale(1)
+            stormNear?.size = CGSize(width: artWidth * 1.05, height: artHeight * 1.05)
+            // The eyes layer was cut from the art at these fractions of its width and height.
+            stormGlare?.size = CGSize(width: artWidth * 0.2498, height: artHeight * 0.2788)
+            stormGlare?.position = CGPoint(x: 0, y: artHeight * (0.3221 - stormEyeLine))
+            stormFill.size = CGSize(width: artWidth * 1.1, height: h)
         }
 
         vignette.size = size
@@ -548,6 +638,7 @@ final class RunScene: SKScene {
         spoolCountSprite.position = CGPoint(x: w - 26, y: top - 42)
         spoolIcon.position = CGPoint(x: w - 26 - spoolCountSprite.size.width - 14, y: top - 42)
         timerSprite.position = CGPoint(x: w / 2, y: top)
+        pauseButton.position = CGPoint(x: 38, y: top)
         timerPill.size = CGSize(width: 116, height: 39)
         timerPill.position = CGPoint(x: w / 2, y: top)
         spoolPill.position.y = top - 42
@@ -634,6 +725,8 @@ final class RunScene: SKScene {
 
     private func showTitle() {
         state = .title
+        eyeGloat = false
+        eyeDefeated = false
         audio.setMusic(playing: false)
         overlay.removeAllChildren()
         hud.removeAllActions()
@@ -734,7 +827,7 @@ final class RunScene: SKScene {
         let labels = ["Finish", "No hits", "Stitched"]
         let starY = cardH * 0.07
         for i in 0..<3 {
-            let starArt = art.star(filled: earned[i])
+            let starArt = illustrated(earned[i] ? "ui-star" : "ui-star-empty", width: 50 * k) ?? art.star(filled: earned[i])
             let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 46 * k, height: 46 * k))
             star.position = CGPoint(x: CGFloat(i - 1) * 74 * k, y: starY)
             star.zPosition = 1
@@ -883,6 +976,8 @@ final class RunScene: SKScene {
         if !fromTitle { resetWorld() }
         distance = 0
         state = .running
+        eyeGloat = false
+        eyeDefeated = false
         runSpeed = tuning.startSpeed
         hud.removeAllActions()
         hud.alpha = 1
@@ -899,6 +994,7 @@ final class RunScene: SKScene {
 
     private func endRun(caught: Bool) {
         state = .over
+        eyeGloat = true
         overAt = clock
         audio.setMusic(playing: false)
         audio.play(.gameOver)
@@ -908,6 +1004,7 @@ final class RunScene: SKScene {
 
     private func finishRun() {
         state = .over
+        eyeDefeated = true
         overAt = clock
         audio.setMusic(playing: false)
         audio.play(.finish)
@@ -938,6 +1035,8 @@ final class RunScene: SKScene {
         switch state {
         case .running:
             step(dt)
+        case .paused:
+            stepCountdown(realDt)
         case .title, .over:
             ambient(dt)
         }
@@ -976,6 +1075,7 @@ final class RunScene: SKScene {
         updatePlayerPhysics(dt)
 
         if slideTimer > 0 { slideTimer -= dt }
+        if hitPoseTimer > 0 { hitPoseTimer -= dt }
         if invulnerable > 0 { invulnerable -= dt }
         if jumpBuffer > 0 { jumpBuffer -= dt }
         if streakTimer > 0 {
@@ -1387,6 +1487,8 @@ final class RunScene: SKScene {
         stormDistance -= tuning.stormHitPenalty
         meter = max(0, meter - 0.08)
         hitStop = 0.07
+        eyePop = 0.6
+        hitPoseTimer = 0.45
         audio.play(.hit)
         haptics.hit()
         shake(strength: 14)
@@ -1478,8 +1580,15 @@ final class RunScene: SKScene {
         case .over:
             if clock - overAt > 0.8 { startRun() }
             return
+        case .paused:
+            handlePausedTap(at: touch.location(in: self))
+            return
         case .running:
-            break
+            let point = touch.location(in: self)
+            if hud.alpha > 0.5, hypot(point.x - pauseButton.position.x, point.y - pauseButton.position.y) < 34 {
+                pauseGame()
+                return
+            }
         }
 
         trackedTouch = touch
@@ -1556,6 +1665,7 @@ final class RunScene: SKScene {
         for eye in stormEyes {
             eye.run(.sequence([.scale(to: 1.4, duration: 0.08), .scale(to: 1, duration: 0.3)]))
         }
+        eyePop = max(eyePop, 0.35)
         // The illustrated storm flares bright with each lightning strike.
         stormArt?.run(.sequence([
             .colorize(with: .white, colorBlendFactor: 0.35, duration: 0.05),
@@ -1628,6 +1738,9 @@ final class RunScene: SKScene {
 
     private func render(dt: Double) {
         guard unitK > 0, dashes.count == dashesPerDivider * 2 else { return }
+
+        PaperGround.setDistance(texturedGray, distance)
+        PaperGround.setDistance(texturedColor, distance)
 
         // Lane dashes stream toward you to sell the speed.
         let offset = distance.truncatingRemainder(dividingBy: dashSpacing)
@@ -1714,7 +1827,7 @@ final class RunScene: SKScene {
 
         renderPlayer()
         renderCamera()
-        renderSkyAndStorm()
+        renderSkyAndStorm(dt: dt)
     }
 
     private func renderPlayer() {
@@ -1737,8 +1850,8 @@ final class RunScene: SKScene {
         let stride = sin(runPhase * .pi)
 
         if sliding {
-            sx = 1.25
-            sy = 0.5
+            sx = 1
+            sy = 1
         } else if landSquash > 0 {
             let amount = CGFloat(landSquash / landSquashTime)
             sx = 1 + 0.18 * amount
@@ -1754,15 +1867,29 @@ final class RunScene: SKScene {
         rig.xScale = rigBaseScale * sx
         rig.yScale = rigBaseScale * sy
         rig.position = CGPoint(x: 0, y: bob * rigBaseScale)
-        rig.zRotation = CGFloat((laneToX - playerX) * -0.35) + (sliding ? 0.25 : 0)
+        rig.zRotation = CGFloat((laneToX - playerX) * -0.35)
 
-        // Face the camera on the results card; otherwise run away from it.
-        let facing = state == .over ? brambleFront : brambleBack
-        if brambleSprite.texture !== facing {
-            brambleSprite.texture = facing
+        // Pick the pose. Results: cheering or dizzy, facing you. Running: hit, slide, jump or run.
+        let running = state != .over
+        if !running {
+            if eyeDefeated {
+                setPose("bramble-win", height: 150)
+            } else if eyeGloat {
+                setPose("bramble-lose", height: 150)
+            } else {
+                setPose("bramble-front", height: 120)
+            }
+        } else if hitPoseTimer > 0 {
+            setPose("bramble-hit", height: 144)
+        } else if sliding {
+            setPose("bramble-slide", height: 96)
+        } else if airborne {
+            setPose("bramble-jump", height: 156)
+        } else {
+            setPose("bramble-back", height: 120)
         }
         // Two-frame run cycle: flip the back view on every stride so the raised foot alternates.
-        if state != .over && !airborne && !sliding {
+        if running && currentPose == "bramble-back" {
             brambleSprite.xScale = stride >= 0 ? 1 : -1
         } else {
             brambleSprite.xScale = 1
@@ -1786,7 +1913,7 @@ final class RunScene: SKScene {
         camRig.setScale(1 + 0.05 * speedT)
     }
 
-    private func renderSkyAndStorm() {
+    private func renderSkyAndStorm(dt: Double) {
         let m = CGFloat(fullyStitched ? 1 : meter)
         let colorAmount = min(1, m * 1.2)
         skyBlue.alpha = colorAmount
@@ -1801,7 +1928,7 @@ final class RunScene: SKScene {
         }
 
         // The storm wall rises from the bottom of the screen as it closes in.
-        let running = state == .running
+        let running = state == .running || state == .paused
         let closeness = running ? CGFloat(1 - max(0, min(1, stormDistance / max(tuning.stormStart, 0.1)))) : 0.0
         let h = size.height
         let visible = h * (0.07 + closeness * 0.33) + CGFloat(sin(clock * 2.2) * 6)
@@ -1818,13 +1945,35 @@ final class RunScene: SKScene {
             eye.setScale(0.9 + closeness * 0.6)
         }
         if let stormArt {
-            // The eyes ride the storm line; the wall swells as it closes in.
-            stormArt.setScale(1 + closeness * 0.3)
-            stormArt.position = CGPoint(x: size.width / 2 + CGFloat(cos(clock * 1.1) * 10),
+            // Three layers drift at different speeds and shift by different amounts when you
+            // change lanes, so the storm has depth. The whole wall swells as it closes in.
+            let lane = CGFloat(playerX)
+            let swell = 1 + closeness * 0.3
+            stormArt.setScale(swell)
+            stormArt.position = CGPoint(x: size.width / 2 + CGFloat(cos(clock * 1.1) * 10) - lane * 14,
                                         y: visible - 8 + CGFloat(sin(clock * 3.1) * 5))
-            stormFill.position = CGPoint(x: stormArt.position.x, y: stormArt.frame.minY + 2)
-            stormFill.xScale = stormArt.xScale
+            if let far = stormFar {
+                far.xScale = -swell
+                far.yScale = swell
+                far.position = CGPoint(x: size.width / 2 + CGFloat(sin(clock * 0.5) * 26) - lane * 6,
+                                       y: stormArt.position.y + far.size.height * 0.16 + CGFloat(sin(clock * 1.3) * 4))
+            }
+            if let near = stormNear {
+                near.xScale = -swell
+                near.yScale = swell
+                near.position = CGPoint(x: size.width / 2 + CGFloat(sin(clock * 1.7) * 18) - lane * 28,
+                                        y: stormArt.frame.minY - near.size.height * 0.44 + CGFloat(sin(clock * 2.4) * 6))
+            }
+            let lowest = min(stormArt.frame.minY, stormNear?.frame.minY ?? stormArt.frame.minY)
+            stormFill.position = CGPoint(x: stormArt.position.x, y: lowest + 2)
+            updateStormEyes(closeness: closeness, dt: dt)
         }
+
+        // The sky backdrop sits far away: it shifts less than the ground when you change lanes.
+        let follow = CGFloat(playerX) * (unitK / CGFloat(camBack)) * 0.3
+        let skyX = size.width / 2 + follow * 0.75 + CGFloat(sin(clock * 0.08) * 8)
+        backdropGray?.position.x = skyX
+        backdropColor?.position.x = skyX
         stormScraps?.position = CGPoint(x: size.width / 2, y: visible - 20)
         stormScraps?.particleBirthRate = running ? 6 + closeness * 40 : 3
 
@@ -1858,9 +2007,165 @@ final class RunScene: SKScene {
         }
         for (i, heart) in hearts.enumerated() {
             let full = i < heartsLeft
-            heart.texture = art.heart(full: full).texture
+            heart.texture = illustrated(full ? "ui-heart" : "ui-heart-empty", width: 38)?.texture ?? art.heart(full: full).texture
         }
         meterFill.size = CGSize(width: max(0.01, meterWidth * CGFloat(meter)), height: 14)
+    }
+
+    /// Blinks, squints and glares. The storm narrows its eyes and turns red as it closes in,
+    /// widens them when it lands a hit, gloats when it catches you, and shuts them when you win.
+    private func updateStormEyes(closeness: CGFloat, dt: Double) {
+        guard let eyes = stormGlare else { return }
+        let blinkLength = 0.22
+        if eyeBlinkPhase >= 0 {
+            eyeBlinkPhase += dt
+            if eyeBlinkPhase > blinkLength { eyeBlinkPhase = -1 }
+        } else {
+            eyeBlinkTimer -= dt
+            if eyeBlinkTimer <= 0 {
+                eyeBlinkPhase = 0
+                // An angry storm stares longer between blinks; now and then it double-blinks.
+                eyeBlinkTimer = Double.random(in: 2.2...4.5) + Double(closeness) * 3
+                if Double.random(in: 0...1) < 0.25 { eyeBlinkTimer = 0.3 }
+            }
+        }
+        var closed: CGFloat = 0
+        if eyeBlinkPhase >= 0 {
+            let t = CGFloat(eyeBlinkPhase / blinkLength)
+            closed = t < 0.4 ? t / 0.4 : max(0, 1 - (t - 0.4) / 0.6)
+        }
+        if eyePop > 0 { eyePop = max(0, eyePop - dt) }
+        let pop = CGFloat(eyePop / 0.6)
+
+        var squint = 1 - 0.38 * closeness
+        var widen = 1 + 0.22 * closeness + 0.35 * pop
+        var red = 0.65 * closeness + 0.4 * pop
+        if eyeGloat {
+            squint = 0.6
+            widen = 1.3
+            red = 0.85
+        }
+        if eyeDefeated { closed = max(closed, 0.93) }
+
+        eyes.xScale = widen
+        eyes.yScale = max(0.04, squint * (1 + 0.25 * pop) * (1 - closed * 0.96))
+        eyes.color = UIColor(red: 1, green: 0.22, blue: 0.08, alpha: 1)
+        eyes.colorBlendFactor = min(0.85, red)
+        eyes.alpha = 0.88 + 0.12 * CGFloat(sin(clock * (4 + Double(closeness) * 8)))
+    }
+
+    /// Swaps Bramble's picture, keeping the feet on the ground and the body a steady size.
+    private func setPose(_ name: String, height: CGFloat) {
+        guard name != currentPose else { return }
+        let entry: (texture: SKTexture, size: CGSize)
+        if let cached = poseTextures[name] {
+            entry = cached
+        } else {
+            guard let image = UIImage(named: name) else { return }
+            let texture = SKTexture(image: image)
+            texture.filteringMode = .linear
+            entry = (texture, image.size)
+            poseTextures[name] = entry
+        }
+        currentPose = name
+        brambleSprite.xScale = 1
+        brambleSprite.texture = entry.texture
+        brambleSprite.size = CGSize(width: height * entry.size.width / entry.size.height, height: height)
+    }
+
+    // MARK: Pause
+
+    @objc private func appWillResignActive() {
+        if state == .running { pauseGame() }
+    }
+
+    private func pauseGame() {
+        guard state == .running else { return }
+        state = .paused
+        resumeCountdown = 0
+        trackedTouch = nil
+        audio.setMusic(playing: false)
+        haptics.lane()
+
+        overlay.removeAllChildren()
+        let w = size.width
+        let h = size.height
+        let dim = SKSpriteNode(color: UIColor(white: 0, alpha: 0.4), size: size)
+        dim.anchorPoint = .zero
+        overlay.addChild(dim)
+
+        let cardW = min(w - 60, 320)
+        let cardH = cardW * 855.0 / 1140.0
+        let card = SKNode()
+        card.position = CGPoint(x: w / 2, y: h * 0.56)
+        overlay.addChild(card)
+        if let paper = imageSprite("ui-card") {
+            paper.size = CGSize(width: cardW, height: cardH)
+            card.addChild(paper)
+        }
+        let title = art.text("Paused", size: 30, fill: .white)
+        let titleSprite = SKSpriteNode(texture: title.texture, size: title.size)
+        titleSprite.position = CGPoint(x: 0, y: cardH * 0.17)
+        titleSprite.zPosition = 1
+        card.addChild(titleSprite)
+
+        let resume = paperButton("Resume", width: min(210, cardW * 0.68))
+        resume.name = "resume"
+        resume.position = CGPoint(x: 0, y: -cardH * 0.14)
+        resume.zPosition = 1
+        card.addChild(resume)
+
+        let quit = paperButton("Quit", width: 140)
+        quit.name = "quit"
+        quit.removeAllActions()
+        quit.position = CGPoint(x: w / 2, y: card.position.y - cardH / 2 - 44)
+        overlay.addChild(quit)
+
+        card.setScale(0.8)
+        card.run(.scale(to: 1, duration: 0.15))
+    }
+
+    private func handlePausedTap(at point: CGPoint) {
+        guard resumeCountdown <= 0 else { return }
+        for node in nodes(at: point) {
+            var current: SKNode? = node
+            while let candidate = current {
+                if candidate.name == "resume" {
+                    resumeGame()
+                    return
+                }
+                if candidate.name == "quit" {
+                    showTitle()
+                    return
+                }
+                current = candidate.parent
+            }
+        }
+    }
+
+    private func resumeGame() {
+        fadeOverlay()
+        haptics.lane()
+        resumeCountdown = 2.4
+        shownCountdown = 0
+    }
+
+    /// 3, 2, 1, Go: gives the player a moment to get ready after a pause.
+    private func stepCountdown(_ dt: Double) {
+        guard resumeCountdown > 0 else { return }
+        resumeCountdown -= dt
+        let number = Int(ceil(resumeCountdown / 0.8))
+        if number != shownCountdown && number > 0 {
+            shownCountdown = number
+            audio.chime(step: 3 - number)
+            popText("\(number)", size: 64, color: .white, at: CGPoint(x: size.width / 2, y: size.height * 0.56), rise: 0, life: 0.6)
+        }
+        if resumeCountdown <= 0 {
+            state = .running
+            audio.setMusic(playing: true)
+            audio.play(.start, volume: 0.6)
+            popText("Go!", size: 52, color: Palette.stitchGold, at: CGPoint(x: size.width / 2, y: size.height * 0.56), rise: 30, life: 0.6)
+        }
     }
 
     /// Sizes the paper pill to wrap the spool icon and count.
