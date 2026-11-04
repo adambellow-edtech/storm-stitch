@@ -128,6 +128,11 @@ final class RunScene: SKScene {
     private let stormRoot = SKNode()
     private var stormBack = SKSpriteNode()
     private var stormFront = SKSpriteNode()
+    /// Illustrated storm wall (eyes included) and the solid cloud base that fills below it.
+    private var stormArt: SKSpriteNode?
+    private let stormFill = SKSpriteNode(color: UIColor(hex: 0x605362), size: CGSize(width: 10, height: 10))
+    /// Eye line in the storm picture, measured up from its bottom edge.
+    private let stormEyeLine: CGFloat = 0.31
     private var stormEyes: [SKSpriteNode] = []
     private var stormScraps: SKEmitterNode?
 
@@ -344,6 +349,22 @@ final class RunScene: SKScene {
             stormEyes.append(eye)
         }
 
+        if let image = UIImage(named: "storm-wall") {
+            let texture = SKTexture(image: image)
+            texture.filteringMode = .linear
+            let sprite = SKSpriteNode(texture: texture)
+            sprite.anchorPoint = CGPoint(x: 0.5, y: stormEyeLine)
+            sprite.zPosition = 1
+            stormRoot.addChild(sprite)
+            stormArt = sprite
+            stormFill.anchorPoint = CGPoint(x: 0.5, y: 1)
+            stormFill.zPosition = 0.9
+            stormRoot.addChild(stormFill)
+            for node in [stormBack, stormFront] + stormEyes {
+                node.isHidden = true
+            }
+        }
+
         let scraps = SKEmitterNode()
         scraps.particleTexture = art.scrap.texture
         scraps.particleBirthRate = 0
@@ -497,6 +518,11 @@ final class RunScene: SKScene {
         stormBack.position.x = w / 2
         stormFront.position.x = w / 2
         stormScraps?.particlePositionRange = CGVector(dx: w, dy: 10)
+        if let stormArt, let image = UIImage(named: "storm-wall") {
+            let artWidth = w * 1.45
+            stormArt.size = CGSize(width: artWidth, height: artWidth * image.size.height / image.size.width)
+            stormFill.size = CGSize(width: artWidth, height: h)
+        }
 
         vignette.size = size
         flash.size = size
@@ -1462,6 +1488,11 @@ final class RunScene: SKScene {
         for eye in stormEyes {
             eye.run(.sequence([.scale(to: 1.4, duration: 0.08), .scale(to: 1, duration: 0.3)]))
         }
+        // The illustrated storm flares bright with each lightning strike.
+        stormArt?.run(.sequence([
+            .colorize(with: .white, colorBlendFactor: 0.35, duration: 0.05),
+            .colorize(withColorBlendFactor: 0, duration: 0.35)
+        ]))
     }
 
     private func popText(_ text: String, size fontSize: CGFloat, color: UIColor, at point: CGPoint, rise: CGFloat, life: Double) {
@@ -1717,6 +1748,14 @@ final class RunScene: SKScene {
             eye.position = CGPoint(x: size.width / 2 + (i == 0 ? -eyeSpread : eyeSpread), y: eyeY)
             eye.alpha = running ? 0.35 + closeness * 0.65 : 0.25
             eye.setScale(0.9 + closeness * 0.6)
+        }
+        if let stormArt {
+            // The eyes ride the storm line; the wall swells as it closes in.
+            stormArt.setScale(1 + closeness * 0.3)
+            stormArt.position = CGPoint(x: size.width / 2 + CGFloat(cos(clock * 1.1) * 10),
+                                        y: visible + 10 + CGFloat(sin(clock * 3.1) * 5))
+            stormFill.position = CGPoint(x: stormArt.position.x, y: stormArt.frame.minY + 2)
+            stormFill.xScale = stormArt.xScale
         }
         stormScraps?.position = CGPoint(x: size.width / 2, y: visible - 20)
         stormScraps?.particleBirthRate = running ? 6 + closeness * 40 : 3
