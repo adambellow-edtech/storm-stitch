@@ -41,6 +41,9 @@ final class Tuning: ObservableObject {
     @Published var stormRecoverRate = Defaults.stormRecoverRate
     @Published var runLength = Defaults.runLength
     @Published var hapticsOn = true
+    @Published var musicOn = true
+    @Published var soundOn = true
+    @Published var showFPS = false
 
     func reset() {
         startSpeed = Defaults.startSpeed
@@ -58,5 +61,8 @@ final class Tuning: ObservableObject {
         stormRecoverRate = Defaults.stormRecoverRate
         runLength = Defaults.runLength
         hapticsOn = true
+        musicOn = true
+        soundOn = true
+        showFPS = false
     }
 }

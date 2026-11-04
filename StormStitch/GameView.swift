@@ -16,7 +16,7 @@ struct GameView: View {
                     SpriteView(
                         scene: scene,
                         preferredFramesPerSecond: 120,
-                        debugOptions: [.showsFPS, .showsNodeCount]
+                        debugOptions: tuning.showFPS ? [.showsFPS, .showsNodeCount] : []
                     )
                     .ignoresSafeArea()
                 }
@@ -84,7 +84,13 @@ struct TuningPanel: View {
                     TuneRow(title: "Storm gain per hit", value: $tuning.stormHitPenalty, range: 0.5...6, unit: "u")
                     TuneRow(title: "Storm fall-back rate", value: $tuning.stormRecoverRate, range: 0...1.5, unit: "u/s")
                     TuneRow(title: "Run length", value: $tuning.runLength, range: 30...180, unit: "s")
+                    Toggle("Music", isOn: $tuning.musicOn)
+                        .font(.subheadline.weight(.semibold))
+                    Toggle("Sound effects", isOn: $tuning.soundOn)
+                        .font(.subheadline.weight(.semibold))
                     Toggle("Haptics", isOn: $tuning.hapticsOn)
+                        .font(.subheadline.weight(.semibold))
+                    Toggle("Show FPS", isOn: $tuning.showFPS)
                         .font(.subheadline.weight(.semibold))
                 }
                 .padding([.horizontal, .bottom])
