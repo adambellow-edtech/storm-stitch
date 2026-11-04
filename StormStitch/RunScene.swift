@@ -970,19 +970,47 @@ final class RunScene: SKScene {
         }
     }
 
+    /// Loads an illustrated PNG from the app bundle, sized to `width` art units (100 per world unit).
+    /// Returns nil when the image hasn't been added yet, so the code-drawn stand-in is used instead.
+    private var illustratedCache: [String: Art] = [:]
+    private func illustrated(_ name: String, width: CGFloat) -> Art? {
+        if let cached = illustratedCache[name] { return cached }
+        guard let image = UIImage(named: name), image.size.width > 0 else { return nil }
+        let texture = SKTexture(image: image)
+        texture.filteringMode = .linear
+        let art = Art(texture: texture, size: CGSize(width: width, height: width * image.size.height / image.size.width))
+        illustratedCache[name] = art
+        return art
+    }
+
     private func addHazard(_ kind: HazardKind, lane: Int, z: Double) {
         let hazardArt: Art
         let anchorY: CGFloat
         switch kind {
         case .low:
-            hazardArt = art.eraser
-            anchorY = 12.0 / 70.0
+            if let picture = illustrated("hazard-eraser", width: 100) {
+                hazardArt = picture
+                anchorY = 0.03
+            } else {
+                hazardArt = art.eraser
+                anchorY = 12.0 / 70.0
+            }
         case .overhead:
-            hazardArt = art.ruler
-            anchorY = 10.0 / 190.0
+            if let picture = illustrated("hazard-ruler", width: 105) {
+                hazardArt = picture
+                anchorY = 0.0
+            } else {
+                hazardArt = art.ruler
+                anchorY = 10.0 / 190.0
+            }
         case .crate:
-            hazardArt = art.box
-            anchorY = 10.0 / 160.0
+            if let picture = illustrated("hazard-box", width: 100) {
+                hazardArt = picture
+                anchorY = 0.03
+            } else {
+                hazardArt = art.box
+                anchorY = 10.0 / 160.0
+            }
         }
         let sprite = SKSpriteNode(texture: hazardArt.texture, size: hazardArt.size)
         sprite.anchorPoint = CGPoint(x: 0.5, y: anchorY)
@@ -993,7 +1021,7 @@ final class RunScene: SKScene {
     }
 
     private func addSpool(lane: Int, z: Double, y: Double) {
-        let spoolArt = art.spool
+        let spoolArt = illustrated("spool", width: 50) ?? art.spool
         let sprite = SKSpriteNode(texture: spoolArt.texture, size: spoolArt.size)
         sprite.alpha = 0
         objectLayer.addChild(sprite)
