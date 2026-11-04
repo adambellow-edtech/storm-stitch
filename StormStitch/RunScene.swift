@@ -664,7 +664,7 @@ final class RunScene: SKScene {
         let cardH: CGFloat = 330
 
         let card = SKNode()
-        card.position = CGPoint(x: w / 2, y: h * 0.52)
+        card.position = CGPoint(x: w / 2, y: h * 0.62)
         overlay.addChild(card)
 
         let shadow = SKShapeNode(rect: CGRect(x: -cardW / 2, y: -cardH / 2 - 8, width: cardW, height: cardH), cornerRadius: 26)
@@ -749,7 +749,7 @@ final class RunScene: SKScene {
 
         let prompt = art.text("Tap to run again", size: 22, fill: Palette.stitchGold)
         let promptSprite = SKSpriteNode(texture: prompt.texture, size: prompt.size)
-        promptSprite.position = CGPoint(x: w / 2, y: h * 0.52 - cardH / 2 - 44)
+        promptSprite.position = CGPoint(x: w / 2, y: h * 0.62 - cardH / 2 + 22)
         promptSprite.run(.repeatForever(.sequence([.scale(to: 1.08, duration: 0.5), .scale(to: 1, duration: 0.5)])))
         overlay.addChild(promptSprite)
 
@@ -1147,7 +1147,7 @@ final class RunScene: SKScene {
         }
         guard let color = illustrated(colorName, width: width),
               let gray = illustrated(grayName, width: width) else { return nil }
-        return colored ? color : gray
+        return colored ? Art(texture: color.texture, size: gray.size) : gray
     }
 
     private func sceneryArt(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art {
