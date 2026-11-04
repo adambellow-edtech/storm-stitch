@@ -682,7 +682,7 @@ final class RunScene: SKScene {
 
         let best = UserDefaults.standard.integer(forKey: "bestSpools")
         if best > 0 {
-            let bestArt = art.text("Best: \(best) spools", size: 17, fill: .white)
+            let bestArt = art.text("Best: \(best) spools", size: 17, fill: .white, style: .body)
             let bestSprite = SKSpriteNode(texture: bestArt.texture, size: bestArt.size)
             bestSprite.position = CGPoint(x: w / 2, y: buttonY + buttonWidth * 0.29)
             bestSprite.zPosition = 2
@@ -690,7 +690,7 @@ final class RunScene: SKScene {
         }
 
         let help = art.text("Swipe to change lanes  \u{00B7}  Tap to jump  \u{00B7}  Swipe down to slide",
-                            size: min(12, w * 0.03), fill: .white)
+                            size: min(12, w * 0.03), fill: .white, style: .body)
         let helpSprite = SKSpriteNode(texture: help.texture, size: help.size)
         helpSprite.position = CGPoint(x: w / 2, y: bottomInset + 26)
         helpSprite.zPosition = 2
@@ -751,7 +751,7 @@ final class RunScene: SKScene {
                 }
             ]))
             card.addChild(star)
-            let caption = art.text(labels[i], size: 10.5 * k, fill: .white)
+            let caption = art.text(labels[i], size: 10.5 * k, fill: .white, style: .body)
             let captionSprite = SKSpriteNode(texture: caption.texture, size: caption.size)
             captionSprite.position = CGPoint(x: star.position.x, y: starY - 31 * k)
             captionSprite.zPosition = 1
@@ -774,7 +774,7 @@ final class RunScene: SKScene {
         for (index, cell) in cells.enumerated() {
             let column = CGFloat(index % 3 - 1)
             let rowY = index < 3 ? -cardH * 0.13 : -cardH * 0.29
-            let value = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            let value = SKLabelNode(fontNamed: "Fredoka-SemiBold")
             value.text = cell.1
             value.fontSize = 20 * k
             value.fontColor = Palette.ink
@@ -782,7 +782,7 @@ final class RunScene: SKScene {
             value.position = CGPoint(x: column * cardW * 0.28, y: rowY)
             value.zPosition = 1
             card.addChild(value)
-            let label = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+            let label = SKLabelNode(fontNamed: "NunitoSans-Bold")
             label.text = cell.0
             label.fontSize = 11 * k
             label.fontColor = Palette.stormDark

@@ -21,6 +21,12 @@ targets:
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
         CADisableMinimumFrameDurationOnPhone: true
+        UIAppFonts:
+          - Fredoka-SemiBold.ttf
+          - Fredoka-Bold.ttf
+          - NunitoSans-Regular.ttf
+          - NunitoSans-Bold.ttf
+          - NunitoSans-ExtraBold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.adambellow.stormstitch

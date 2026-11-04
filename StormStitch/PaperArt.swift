@@ -516,13 +516,22 @@ final class PaperArt {
         }
     }
 
-    /// Chunky rounded text with an ink outline and a hard shadow.
-    func text(_ string: String, size: CGFloat, fill: UIColor = .white, outline: UIColor = Palette.ink) -> Art {
-        var font = UIFont.systemFont(ofSize: size, weight: .black)
-        if let rounded = font.fontDescriptor.withDesign(.rounded) {
+    /// Game fonts: Fredoka for titles, headings and buttons; Nunito Sans for longer text.
+    enum TextStyle {
+        case heading
+        case body
+    }
+
+    /// Chunky text with an ink outline and a hard shadow.
+    func text(_ string: String, size: CGFloat, fill: UIColor = .white, outline: UIColor = Palette.ink,
+              style: TextStyle = .heading) -> Art {
+        let fontName = style == .heading ? "Fredoka-Bold" : "NunitoSans-ExtraBold"
+        var font = UIFont(name: fontName, size: size) ?? UIFont.systemFont(ofSize: size, weight: .black)
+        if UIFont(name: fontName, size: size) == nil,
+           let rounded = font.fontDescriptor.withDesign(.rounded) {
             font = UIFont(descriptor: rounded, size: size)
         }
-        let key = "text|\(string)|\(size)|\(fill.description)|\(outline.description)"
+        let key = "text|\(fontName)|\(string)|\(size)|\(fill.description)|\(outline.description)"
         let measured = (string as NSString).size(withAttributes: [.font: font])
         let pad = ceil(size * 0.25)
         let canvas = CGSize(width: ceil(measured.width) + pad * 2, height: ceil(measured.height) + pad * 2)
