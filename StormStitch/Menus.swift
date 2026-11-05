@@ -55,7 +55,7 @@ extension RunScene {
     }
 
     /// A paper panel: the illustrated card when the shape fits it, otherwise cut paper drawn in code.
-    func paperPanel(width: CGFloat, height: CGFloat) -> SKNode {
+    func paperPanel(width: CGFloat, height: CGFloat, tallArt: Bool = false) -> SKNode {
         let node = SKNode()
         let shadow = SKShapeNode(rect: CGRect(x: -width / 2, y: -height / 2 - 9, width: width, height: height), cornerRadius: 26)
         shadow.fillColor = UIColor(white: 0, alpha: 0.28)
@@ -64,6 +64,10 @@ extension RunScene {
         if abs(width / height - 4.0 / 3.0) < 0.12, let card = imageSprite("ui-card") {
             card.size = CGSize(width: width, height: height)
             node.addChild(card)
+            return node
+        }
+        if tallArt, width / height < 4.0 / 3.0, width / height > 0.55, let tall = tallPaperCard(width: width, height: height) {
+            node.addChild(tall)
             return node
         }
         let panel = SKShapeNode(rect: CGRect(x: -width / 2, y: -height / 2, width: width, height: height), cornerRadius: 26)
@@ -79,6 +83,38 @@ extension RunScene {
         stitch.lineWidth = 2.5
         stitch.fillColor = .clear
         node.addChild(stitch)
+        return node
+    }
+
+    /// The illustrated card made taller: its top and bottom halves stay as drawn, and a band from
+    /// the middle repeats between them, so the stitched border and corners keep their shape.
+    func tallPaperCard(width: CGFloat, height: CGFloat) -> SKNode? {
+        guard let image = artImage("ui-card"), image.size.width > 0 else { return nil }
+        let texture = SKTexture(image: image)
+        texture.filteringMode = .linear
+        let baseH = width * image.size.height / image.size.width
+        let node = SKNode()
+        let top = SKSpriteNode(texture: SKTexture(rect: CGRect(x: 0, y: 0.5, width: 1, height: 0.5), in: texture),
+                               size: CGSize(width: width, height: baseH / 2))
+        top.position = CGPoint(x: 0, y: height / 2 - baseH / 4)
+        node.addChild(top)
+        let bottom = SKSpriteNode(texture: SKTexture(rect: CGRect(x: 0, y: 0, width: 1, height: 0.5), in: texture),
+                                  size: CGSize(width: width, height: baseH / 2))
+        bottom.position = CGPoint(x: 0, y: -height / 2 + baseH / 4)
+        node.addChild(bottom)
+        let bandFraction: CGFloat = 0.2
+        let bandH = baseH * bandFraction
+        var y = -height / 2 + baseH / 2
+        let end = height / 2 - baseH / 2
+        while y < end - 0.5 {
+            let piece = min(bandH, end - y)
+            let rect = CGRect(x: 0, y: 0.4, width: 1, height: bandFraction * piece / bandH)
+            let band = SKSpriteNode(texture: SKTexture(rect: rect, in: texture), size: CGSize(width: width, height: piece + 0.5))
+            band.position = CGPoint(x: 0, y: y + piece / 2)
+            band.zPosition = -0.1
+            node.addChild(band)
+            y += piece
+        }
         return node
     }
 
@@ -270,6 +306,65 @@ extension RunScene {
          CGPoint(x: 0.3, y: 0.83), CGPoint(x: 0.55, y: 0.96)]
     }
 
+    /// A smooth curve between stage i and i+1 (Catmull-Rom through its neighbours), with a gentle sideways bow.
+    func mapCurve(_ spots: [CGPoint], from i: Int) -> (path: CGPath, point: (CGFloat) -> CGPoint) {
+        let p0 = spots[max(0, i - 1)], p1 = spots[i], p2 = spots[i + 1], p3 = spots[min(spots.count - 1, i + 2)]
+        let bow: CGFloat = i % 2 == 0 ? 18 : -18
+        let dx = p2.x - p1.x, dy = p2.y - p1.y
+        let length = max(1, hypot(dx, dy))
+        let normal = CGPoint(x: -dy / length * bow, y: dx / length * bow)
+        let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6 + normal.x, y: p1.y + (p2.y - p0.y) / 6 + normal.y)
+        let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6 + normal.x, y: p2.y - (p3.y - p1.y) / 6 + normal.y)
+        let path = CGMutablePath()
+        path.move(to: p1)
+        path.addCurve(to: p2, control1: c1, control2: c2)
+        let point: (CGFloat) -> CGPoint = { t in
+            let u = 1 - t
+            let a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+            return CGPoint(x: a * p1.x + b * c1.x + c * c2.x + d * p2.x,
+                           y: a * p1.y + b * c1.y + c * c2.y + d * p2.y)
+        }
+        return (path, point)
+    }
+
+    /// A shader that shows a sprite only inside soft, lumpy blobs (given in scene points), feathered at the edges.
+    func softReveal(frame: CGRect, blobs: [(center: CGPoint, radius: CGFloat, seed: UInt64)]) -> SKShader {
+        let scale: CGFloat = 0.25
+        let maskSize = CGSize(width: max(8, frame.width * scale), height: max(8, frame.height * scale))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: maskSize, format: format).image { context in
+            let cg = context.cgContext
+            let space = CGColorSpaceCreateDeviceRGB()
+            let colors = [UIColor(white: 1, alpha: 1).cgColor, UIColor(white: 1, alpha: 0.85).cgColor,
+                          UIColor(white: 1, alpha: 0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.45, 1]) else { return }
+            for blob in blobs {
+                var rng = GameRNG(seed: blob.seed &* 2_654_435_761)
+                // Map scene points into the mask picture (whose y runs downward).
+                let cx = (blob.center.x - frame.minX) * scale
+                let cy = (frame.maxY - blob.center.y) * scale
+                for _ in 0..<7 {
+                    let angle = CGFloat.random(in: 0..<(2 * .pi), using: &rng)
+                    let reach = blob.radius * scale * CGFloat.random(in: 0...0.5, using: &rng)
+                    let center = CGPoint(x: cx + cos(angle) * reach, y: cy + sin(angle) * reach)
+                    let radius = blob.radius * scale * CGFloat.random(in: 0.5...0.85, using: &rng)
+                    cg.drawRadialGradient(gradient, startCenter: center, startRadius: 0,
+                                          endCenter: center, endRadius: radius, options: [])
+                }
+            }
+        }
+        let shader = SKShader(source: """
+        void main() {
+            vec4 color = texture2D(u_texture, v_tex_coord);
+            float keep = texture2D(u_mask, v_tex_coord).a;
+            gl_FragColor = color * keep;
+        }
+        """)
+        shader.uniforms = [SKUniform(name: "u_mask", texture: SKTexture(image: image))]
+        return shader
+    }
+
     func showMap() {
         state = .menu
         clearScreen()
@@ -295,31 +390,39 @@ extension RunScene {
         background.addChild(fill("map-gray", fallback: UIColor(hex: 0xA9ABB6)))
         let area = CGRect(x: 40, y: safeBottom + 140, width: w - 80, height: h - safeTop - 165 - (safeBottom + 140))
         let spots = mapSpots.map { CGPoint(x: area.minX + $0.x * area.width, y: area.minY + $0.y * area.height) }
-        let reveal = SKCropNode()
-        let mask = SKNode()
-        for (i, spot) in spots.enumerated() where progress.stars(forStage: i) > 0 {
-            let blob = SKShapeNode(circleOfRadius: w * 0.26)
-            blob.fillColor = .white
-            blob.strokeColor = .clear
-            blob.position = spot
-            mask.addChild(blob)
+        // Color soaks back in around cleared stages and along the path between them, with soft, uneven edges.
+        let colorMap = fill("map-color", fallback: UIColor(hex: 0x7FCF84))
+        let cleared = (0..<spots.count).filter { progress.stars(forStage: $0) > 0 }
+        if !cleared.isEmpty, let colorSprite = colorMap as? SKSpriteNode {
+            var blobs: [(center: CGPoint, radius: CGFloat, seed: UInt64)] = cleared.map { (spots[$0], w * 0.3, UInt64($0 + 1)) }
+            for i in cleared where i + 1 < spots.count {
+                let segment = mapCurve(spots, from: i)
+                for (j, t) in [0.25, 0.5, 0.75].enumerated() {
+                    blobs.append((segment.point(CGFloat(t)), w * 0.14, UInt64(100 + i * 10 + j)))
+                }
+            }
+            colorSprite.shader = softReveal(frame: colorSprite.frame, blobs: blobs)
+            background.addChild(colorSprite)
         }
-        reveal.maskNode = mask
-        reveal.addChild(fill("map-color", fallback: UIColor(hex: 0x7FCF84)))
-        background.addChild(reveal)
 
-        // The path, stitched in gold where you've been.
+        // The path curves between stages, stitched in gold where you've been.
         for i in 0..<(spots.count - 1) {
-            let line = SKShapeNode()
-            let path = CGMutablePath()
-            path.move(to: spots[i])
-            path.addLine(to: spots[i + 1])
             let done = progress.stars(forStage: i) > 0
-            line.path = path.copy(dashingWithPhase: 0, lengths: done ? [14, 6] : [8, 10])
-            line.strokeColor = done ? Palette.stitchGold : UIColor(white: 1, alpha: 0.75)
+            let path = mapCurve(spots, from: i).path
+            if done {
+                let shadow = SKShapeNode(path: path.copy(dashingWithPhase: 0, lengths: [14, 7]))
+                shadow.strokeColor = UIColor(hex: 0x6B4A12, alpha: 0.55)
+                shadow.lineWidth = 8
+                shadow.lineCap = .round
+                shadow.position = CGPoint(x: 0, y: -2)
+                shadow.zPosition = 1
+                overlay.addChild(shadow)
+            }
+            let line = SKShapeNode(path: path.copy(dashingWithPhase: 0, lengths: done ? [14, 7] : [7, 11]))
+            line.strokeColor = done ? Palette.stitchGold : UIColor(white: 1, alpha: 0.8)
             line.lineWidth = done ? 6 : 4
             line.lineCap = .round
-            line.zPosition = 1
+            line.zPosition = 1.1
             overlay.addChild(line)
         }
 
@@ -691,11 +794,20 @@ extension RunScene {
         hud.alpha = 0
         let w = size.width
         let h = size.height
+        // Shelf geometry, in pixels of the trophy-case painting (941 x 1672, y from the top):
+        // the board each row stands on, the top of each compartment, and the inside walls.
+        let artSize = CGSize(width: 941, height: 1672)
+        let shelfLines: [CGFloat] = [692, 888, 1088, 1300]
+        let compartmentTops: [CGFloat] = [560, 745, 945, 1150]
+        let insideLeft: CGFloat = 150, insideRight: CGFloat = 795
+        var caseFrame = CGRect(x: (w - h * artSize.width / artSize.height) / 2, y: 0,
+                               width: h * artSize.width / artSize.height, height: h)
         if let shelf = imageSprite("trophy-case") {
             let k = max(w / shelf.size.width, h / shelf.size.height)
             shelf.size = CGSize(width: shelf.size.width * k, height: shelf.size.height * k)
             shelf.position = CGPoint(x: w / 2, y: h / 2)
             overlay.addChild(shelf)
+            caseFrame = shelf.frame
         } else {
             let wall = SKSpriteNode(color: UIColor(hex: 0x6B4A2E), size: size)
             wall.anchorPoint = .zero
@@ -715,64 +827,124 @@ extension RunScene {
             onTap(pill) { [unowned self] in self.showTrophyCase(tab: i) }
         }
 
-        let gridTop = h - safeTop - 80
-        let gridBottom = safeBottom + 16
+        func onCase(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: caseFrame.minX + x / artSize.width * caseFrame.width,
+                    y: caseFrame.maxY - y / artSize.height * caseFrame.height)
+        }
+        let unit = caseFrame.width / artSize.width
+        let slotW = (insideRight - insideLeft) / 3 * unit
         let progress = Progress.shared
+
+        // A paper strip along the bottom tells you about whatever you tap.
+        let info = SKNode()
+        info.position = CGPoint(x: w / 2, y: safeBottom + 36)
+        info.zPosition = 6
+        overlay.addChild(info)
+        let infoW = min(w - 32, 420)
+        let strip = SKShapeNode(rect: CGRect(x: -infoW / 2, y: -27, width: infoW, height: 54), cornerRadius: 27)
+        strip.fillColor = Palette.paper
+        strip.strokeColor = Palette.stitchGold
+        strip.lineWidth = 3
+        info.addChild(strip)
+        let infoText = SKNode()
+        infoText.zPosition = 1
+        info.addChild(infoText)
+        let showInfo: (String, String) -> Void = { [unowned self] title, detail in
+            infoText.removeAllChildren()
+            let top = self.label(title, size: 15, color: Palette.stitchGold)
+            let bottom = self.label(detail, size: 12, color: Palette.ink, style: .body)
+            for sprite in [top, bottom] where sprite.size.width > infoW - 40 {
+                sprite.setScale((infoW - 40) / sprite.size.width)
+            }
+            top.position = CGPoint(x: 0, y: 9)
+            bottom.position = CGPoint(x: 0, y: -10)
+            infoText.addChild(top)
+            infoText.addChild(bottom)
+        }
+
+        // Rows fill top to bottom, three to a shelf, spread as evenly as the count allows.
+        func slots(for count: Int) -> [(row: Int, x: CGFloat)] {
+            var result: [(row: Int, x: CGFloat)] = []
+            let base = count / shelfLines.count, extra = count % shelfLines.count
+            let center = (insideLeft + insideRight) / 2
+            for row in 0..<shelfLines.count {
+                let inRow = min(3, base + (row < extra ? 1 : 0))
+                for i in 0..<inRow {
+                    let x = center + (CGFloat(i) - CGFloat(inRow - 1) / 2) * (insideRight - insideLeft) / 3
+                    result.append((row, x))
+                }
+            }
+            return result
+        }
+
+        /// A little name tag pinned to the front of the shelf board.
+        func nameTag(_ text: String, highlighted: Bool, fraction: CGFloat?) -> SKNode {
+            let tag = SKNode()
+            let tagW = slotW * 0.86, tagH: CGFloat = fraction == nil ? 20 : 26
+            let paper = SKShapeNode(rect: CGRect(x: -tagW / 2, y: -tagH / 2, width: tagW, height: tagH), cornerRadius: 6)
+            paper.fillColor = highlighted ? Palette.stitchGold : Palette.paper
+            paper.strokeColor = highlighted ? .white : UIColor(hex: 0x8A5A2B)
+            paper.lineWidth = 1.5
+            tag.addChild(paper)
+            let name = label(text, size: 12, color: highlighted ? .white : Palette.ink)
+            if name.size.width > tagW - 10 { name.setScale((tagW - 10) / name.size.width) }
+            name.position = CGPoint(x: 0, y: fraction == nil ? 0 : 4)
+            name.zPosition = 1
+            tag.addChild(name)
+            if let fraction {
+                let barW = tagW - 16
+                let bar = SKShapeNode(rect: CGRect(x: -barW / 2, y: -9, width: barW, height: 4), cornerRadius: 2)
+                bar.fillColor = UIColor(white: 0, alpha: 0.15)
+                bar.strokeColor = .clear
+                bar.zPosition = 1
+                tag.addChild(bar)
+                if fraction > 0.01 {
+                    let fill = SKShapeNode(rect: CGRect(x: -barW / 2, y: -9, width: barW * min(1, fraction), height: 4), cornerRadius: 2)
+                    fill.fillColor = Palette.stitchGold
+                    fill.strokeColor = .clear
+                    fill.zPosition = 2
+                    tag.addChild(fill)
+                }
+            }
+            return tag
+        }
+
         if tab == 0 {
-            let columns = 3
-            let rows = Int(ceil(Double(Monster.roster.count) / Double(columns)))
-            let cellW = min(w - 24, 390) / CGFloat(columns)
-            let cellH = min(170, (gridTop - gridBottom) / CGFloat(rows))
             for (i, monster) in Monster.roster.enumerated() {
+                let slot = slots(for: Monster.roster.count)[i]
                 let unlocked = progress.isUnlocked(monster)
-                let cell = SKNode()
-                let column = CGFloat(i % columns)
-                let row = CGFloat(i / columns)
-                cell.position = CGPoint(x: w / 2 + (column - CGFloat(columns - 1) / 2) * cellW,
-                                        y: gridTop - cellH * (row + 0.5))
-                cell.zPosition = 2
-                overlay.addChild(cell)
                 let selected = unlocked && monster.id == self.monster.id
-                let back = SKShapeNode(rect: CGRect(x: -cellW / 2 + 4, y: -cellH / 2 + 4, width: cellW - 8, height: cellH - 8), cornerRadius: 16)
-                back.fillColor = Palette.paper.withAlphaComponent(unlocked ? 0.94 : 0.6)
-                back.strokeColor = selected ? Palette.stitchGold : .white
-                back.lineWidth = selected ? 5 : 3
-                cell.addChild(back)
-                if let portrait = monsterPortrait(monster, box: CGSize(width: cellW * 0.7, height: cellH * 0.5), locked: !unlocked) {
-                    portrait.position = CGPoint(x: 0, y: cellH * 0.14)
+                let standPoint = onCase(slot.x, shelfLines[slot.row])
+                let roomH = (shelfLines[slot.row] - compartmentTops[slot.row]) * unit
+                let item = SKNode()
+                item.position = standPoint
+                item.zPosition = 2
+                overlay.addChild(item)
+                if selected {
+                    let glow = SKShapeNode(ellipseOf: CGSize(width: slotW * 0.8, height: 14))
+                    glow.fillColor = Palette.stitchGold.withAlphaComponent(0.55)
+                    glow.strokeColor = .clear
+                    glow.glowWidth = 6
+                    glow.position = CGPoint(x: 0, y: 3)
+                    item.addChild(glow)
+                    glow.run(.repeatForever(.sequence([.fadeAlpha(to: 0.5, duration: 0.8), .fadeAlpha(to: 1, duration: 0.8)])))
+                }
+                if let portrait = monsterPortrait(monster, box: CGSize(width: slotW * 0.86, height: roomH * 0.86), locked: !unlocked) {
+                    portrait.anchorPoint = CGPoint(x: 0.5, y: 0)
+                    portrait.position = CGPoint(x: 0, y: 1)
                     portrait.zPosition = 1
-                    cell.addChild(portrait)
-                } else if !unlocked, let badge = imageSprite("badge-locked") {
-                    badge.size = CGSize(width: cellH * 0.45, height: cellH * 0.45)
-                    badge.position = CGPoint(x: 0, y: cellH * 0.14)
-                    cell.addChild(badge)
+                    item.addChild(portrait)
+                } else if let badge = imageSprite("badge-locked") {
+                    badge.size = CGSize(width: roomH * 0.6, height: roomH * 0.6)
+                    badge.anchorPoint = CGPoint(x: 0.5, y: 0)
+                    item.addChild(badge)
                 }
-                let name = label(unlocked ? monster.name : "???", size: 15, color: unlocked ? Palette.ink : Palette.stormDark)
-                name.position = CGPoint(x: 0, y: -cellH * 0.15)
-                name.zPosition = 1
-                cell.addChild(name)
-                let line = unlocked ? monster.passive : monster.unlock.text
-                let detail = paragraph(line, size: 10, width: cellW - 18, color: Palette.stormDark)
-                detail.position = CGPoint(x: 0, y: -cellH * 0.3)
-                detail.zPosition = 1
-                cell.addChild(detail)
-                if !unlocked {
-                    let fraction = CGFloat(progress.progress(toward: monster))
-                    let barW = cellW - 30
-                    let bar = SKShapeNode(rect: CGRect(x: -barW / 2, y: 0, width: barW, height: 5), cornerRadius: 2.5)
-                    bar.fillColor = UIColor(white: 0, alpha: 0.15)
-                    bar.strokeColor = .clear
-                    bar.position = CGPoint(x: 0, y: -cellH / 2 + 7)
-                    cell.addChild(bar)
-                    if fraction > 0.01 {
-                        let fill = SKShapeNode(rect: CGRect(x: -barW / 2, y: 0, width: barW * fraction, height: 5), cornerRadius: 2.5)
-                        fill.fillColor = Palette.stitchGold
-                        fill.strokeColor = .clear
-                        fill.position = bar.position
-                        cell.addChild(fill)
-                    }
-                }
-                onTap(cell) { [unowned self] in
+                let tag = nameTag(unlocked ? monster.name : "???", highlighted: selected,
+                                  fraction: unlocked ? nil : CGFloat(progress.progress(toward: monster)))
+                tag.position = CGPoint(x: 0, y: -18 * max(1, unit * 1.6))
+                tag.zPosition = 3
+                item.addChild(tag)
+                onTap(item) { [unowned self] in
                     if unlocked {
                         Monster.selectedIndex = i
                         self.monster = monster
@@ -780,63 +952,54 @@ extension RunScene {
                         self.audio.chime(step: i % 8)
                         self.showTrophyCase(tab: 0)
                     } else {
-                        // Keep the hint on screen; it can be wider than its cell.
-                        let x = min(max(cell.position.x, 158), self.size.width - 158)
-                        let spot = CGPoint(x: x, y: cell.position.y)
-                        self.popText(monster.unlock.text, size: 16, color: .white, at: spot, rise: 30, life: 1.4,
-                                     parent: self.overlay)
+                        let percent = Int(progress.progress(toward: monster) * 100)
+                        showInfo("Locked: \(percent)% there", monster.unlock.text)
                     }
                 }
             }
+            showInfo("\(self.monster.name) is running", self.monster.passive)
         } else {
-            let columns = 2
-            let rows = Int(ceil(Double(Trophy.allCases.count) / Double(columns)))
-            let cellW = min(w - 24, 400) / CGFloat(columns)
-            let cellH = min(110, (gridTop - gridBottom) / CGFloat(rows))
+            let earnedCount = Trophy.allCases.filter { progress.hasTrophy($0) }.count
             for (i, trophy) in Trophy.allCases.enumerated() {
+                let slot = slots(for: Trophy.allCases.count)[i]
                 let earned = progress.hasTrophy(trophy)
-                let cell = SKNode()
-                cell.position = CGPoint(x: w / 2 + (CGFloat(i % columns) - 0.5) * cellW,
-                                        y: gridTop - cellH * (CGFloat(i / columns) + 0.5))
-                cell.zPosition = 2
-                overlay.addChild(cell)
-                let back = SKShapeNode(rect: CGRect(x: -cellW / 2 + 4, y: -cellH / 2 + 4, width: cellW - 8, height: cellH - 8), cornerRadius: 14)
-                back.fillColor = Palette.paper.withAlphaComponent(earned ? 0.95 : 0.6)
-                back.strokeColor = earned ? Palette.stitchGold : .white
-                back.lineWidth = 3
-                cell.addChild(back)
-                let iconSize = min(cellH * 0.5, 48)
+                let standPoint = onCase(slot.x, shelfLines[slot.row])
+                let roomH = (shelfLines[slot.row] - compartmentTops[slot.row]) * unit
+                let item = SKNode()
+                item.position = standPoint
+                item.zPosition = 2
+                overlay.addChild(item)
+                let iconH = roomH * 0.72
                 let cup: SKSpriteNode
                 if let image = imageSprite("menu-trophy") {
                     cup = image
-                    let k = iconSize / max(image.size.width, image.size.height)
-                    cup.size = CGSize(width: image.size.width * k, height: image.size.height * k)
+                    let k = iconH / image.size.height
+                    cup.size = CGSize(width: image.size.width * k, height: iconH)
                 } else {
                     let star = art.star(filled: earned)
-                    cup = SKSpriteNode(texture: star.texture, size: CGSize(width: iconSize, height: iconSize))
+                    cup = SKSpriteNode(texture: star.texture, size: CGSize(width: iconH, height: iconH))
                 }
-                if !earned {
-                    cup.color = Palette.stormDark
-                    cup.colorBlendFactor = 0.9
-                    cup.alpha = 0.6
-                }
-                cup.position = CGPoint(x: -cellW / 2 + 12 + iconSize / 2, y: 0)
+                cup.anchorPoint = CGPoint(x: 0.5, y: 0)
+                cup.position = CGPoint(x: 0, y: 1)
                 cup.zPosition = 1
-                cell.addChild(cup)
-                let textX = -cellW / 2 + 22 + iconSize
-                let name = label(trophy.name, size: 14, color: earned ? Palette.ink : Palette.stormDark, anchorX: 0)
-                name.position = CGPoint(x: textX, y: 10)
-                name.zPosition = 1
-                cell.addChild(name)
-                let detail = label(trophy.detail, size: 10, color: Palette.stormDark, style: .body, anchorX: 0)
-                detail.position = CGPoint(x: textX, y: -10)
-                detail.zPosition = 1
-                cell.addChild(detail)
-                let room = cellW / 2 - 10 - textX
-                for sprite in [name, detail] where sprite.size.width > room {
-                    sprite.setScale(room / sprite.size.width)
+                if earned {
+                    cup.run(.repeatForever(.sequence([.wait(forDuration: 2 + Double(i) * 0.3),
+                                                      .scale(to: 1.08, duration: 0.15), .scale(to: 1, duration: 0.2)])))
+                } else {
+                    cup.color = Palette.ink
+                    cup.colorBlendFactor = 1
+                    cup.alpha = 0.4
+                }
+                item.addChild(cup)
+                let tag = nameTag(trophy.name, highlighted: earned, fraction: nil)
+                tag.position = CGPoint(x: 0, y: -18 * max(1, unit * 1.6))
+                tag.zPosition = 3
+                item.addChild(tag)
+                onTap(item) {
+                    showInfo(earned ? "\(trophy.name): earned!" : trophy.name, trophy.detail)
                 }
             }
+            showInfo("\(earnedCount) of \(Trophy.allCases.count) trophies", "Tap a trophy to see how to earn it")
         }
     }
 
@@ -846,65 +1009,91 @@ extension RunScene {
         let w = size.width
         _ = dimBackground { [unowned self] in self.showTitle() }
         let cardW = min(w - 32, 340)
-        let rows: [(String, () -> Void)] = settingsRows()
-        let cardH = CGFloat(110 + rows.count * 62)
-        let card = paperPanel(width: cardW, height: cardH)
-        card.position = CGPoint(x: w / 2, y: size.height * 0.52)
+        let rows = settingsRows()
+        let rowH: CGFloat = 44
+        let gap: CGFloat = 10
+        let cardH = CGFloat(rows.count) * (rowH + gap) + 150
+        let card = paperPanel(width: cardW, height: cardH, tallArt: true)
+        card.position = CGPoint(x: w / 2, y: min(size.height * 0.52, size.height - safeTop - 20 - cardH / 2))
         card.zPosition = 11
         overlay.addChild(card)
         onTap(card) {}  // Taps on the card itself don't close it.
         let top = cardH / 2
         let title = label("Settings", size: 26, color: Palette.stitchGold)
-        title.position = CGPoint(x: 0, y: top - 42)
+        title.position = CGPoint(x: 0, y: top - 62)
         card.addChild(title)
+        let rowW = cardW - 70
         for (i, row) in rows.enumerated() {
-            let button = paperButton(row.0, width: min(250, cardW - 60), pulse: false)
-            button.setScale(0.55)
-            button.position = CGPoint(x: 0, y: top - 96 - CGFloat(i) * 62)
-            button.zPosition = 1
-            card.addChild(button)
-            onTap(button, row.1)
+            let node = settingsRow(row.title, value: row.value, width: rowW, height: rowH)
+            node.position = CGPoint(x: 0, y: top - 112 - CGFloat(i) * (rowH + gap))
+            node.zPosition = 1
+            card.addChild(node)
+            onTap(node, row.action)
         }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         let footer = label("Storm Stitch \(version)", size: 11, color: Palette.stormDark, style: .body)
-        footer.position = CGPoint(x: 0, y: -top + 24)
+        footer.position = CGPoint(x: 0, y: -top + 46)
         card.addChild(footer)
-        closeButton(at: CGPoint(x: w / 2 + cardW / 2 - 18, y: card.position.y + top - 18)) { [unowned self] in self.showTitle() }
+        closeButton(at: CGPoint(x: w / 2 + cardW / 2 - 24, y: card.position.y + top - 30)) { [unowned self] in self.showTitle() }
     }
 
-    func settingsRows() -> [(String, () -> Void)] {
+    /// One settings line: the same size for every row, name on the left, an On/Off chip or an arrow on the right.
+    func settingsRow(_ title: String, value: Bool?, width: CGFloat, height: CGFloat) -> SKNode {
+        let node = SKNode()
+        let strip = SKShapeNode(rect: CGRect(x: -width / 2, y: -height / 2, width: width, height: height), cornerRadius: height / 2)
+        strip.fillColor = UIColor.white.withAlphaComponent(0.7)
+        strip.strokeColor = Palette.stitchGold
+        strip.lineWidth = 2
+        node.addChild(strip)
+        let name = label(title, size: 16, color: Palette.ink, style: .body, anchorX: 0)
+        name.position = CGPoint(x: -width / 2 + 20, y: 0)
+        name.zPosition = 1
+        let room = width - 20 - 86
+        if name.size.width > room { name.setScale(room / name.size.width) }
+        node.addChild(name)
+        if let on = value {
+            let chipW: CGFloat = 58
+            let chip = SKShapeNode(rect: CGRect(x: -chipW / 2, y: -14, width: chipW, height: 28), cornerRadius: 14)
+            chip.fillColor = on ? UIColor(hex: 0x5DBB63) : UIColor(hex: 0xB9B6C6)
+            chip.strokeColor = .clear
+            chip.position = CGPoint(x: width / 2 - 12 - chipW / 2, y: 0)
+            chip.zPosition = 1
+            node.addChild(chip)
+            let text = label(on ? "On" : "Off", size: 14, color: .white)
+            text.zPosition = 1
+            chip.addChild(text)
+        } else {
+            let arrow = label("›", size: 26, color: Palette.stitchGold)
+            arrow.position = CGPoint(x: width / 2 - 24, y: 2)
+            arrow.zPosition = 1
+            node.addChild(arrow)
+        }
+        return node
+    }
+
+    func settingsRows() -> [(title: String, value: Bool?, action: () -> Void)] {
         let data = Progress.shared.data
-        var rows: [(String, () -> Void)] = [
-            ("Music: \(data.music ? "On" : "Off")", { [unowned self] in
-                Progress.shared.update { $0.music.toggle() }
-                self.syncSettings()
-                self.showTitle()
-                self.showSettings()
-            }),
-            ("Sound: \(data.sound ? "On" : "Off")", { [unowned self] in
-                Progress.shared.update { $0.sound.toggle() }
-                self.syncSettings()
-                self.showTitle()
-                self.showSettings()
-            }),
-            ("Haptics: \(data.haptics ? "On" : "Off")", { [unowned self] in
-                Progress.shared.update { $0.haptics.toggle() }
-                self.syncSettings()
-                self.showTitle()
-                self.showSettings()
-            }),
-            ("Watch the story", { [unowned self] in self.playStory() }),
-            ("Game Center", { GameCenter.showLeaderboards() }),
-            ("Privacy and support", {
+        let refresh: () -> Void = { [unowned self] in
+            self.syncSettings()
+            self.showTitle()
+            self.showSettings()
+        }
+        var rows: [(title: String, value: Bool?, action: () -> Void)] = [
+            ("Music", data.music, { Progress.shared.update { $0.music.toggle() }; refresh() }),
+            ("Sound effects", data.sound, { Progress.shared.update { $0.sound.toggle() }; refresh() }),
+            ("Vibration", data.haptics, { Progress.shared.update { $0.haptics.toggle() }; refresh() }),
+            ("Watch the story", nil, { [unowned self] in self.playStory() }),
+            ("Game Center", nil, { GameCenter.showLeaderboards() }),
+            ("Privacy and support", nil, {
                 if let url = URL(string: "\(Share.site)/privacy/") { UIApplication.shared.open(url) }
             })
         ]
         #if DEBUG
-        rows.append(("Dev: unlock everything", { [unowned self] in
+        rows.append(("Dev: unlock everything", nil, { [unowned self] in
             Progress.shared.unlockEverything()
             self.showTitle()
         }))
-        rows.append(("Dev: reset progress", { [unowned self] in
+        rows.append(("Dev: reset progress", nil, { [unowned self] in
             Progress.shared.resetAll()
             Monster.selectedIndex = 0
             self.showTitle()
@@ -929,9 +1118,12 @@ extension RunScene {
         hud.run(.fadeOut(withDuration: 0.25))
         let w = size.width
         let cardW = min(w - 16, 390)
-        let cardH = cardW * 855.0 / 1140.0
         let k = cardW / 380
-        let card = paperPanel(width: cardW, height: cardH)
+        let cardH = 322 * k
+        // Everything sits inside the stitched border: its top and bottom stitches are about 14% of
+        // the drawn card's height in from each edge.
+        let innerTop = cardH / 2 - cardW * 0.75 * 0.145
+        let card = paperPanel(width: cardW, height: cardH, tallArt: true)
         card.position = CGPoint(x: w / 2, y: size.height - safeTop - 12 - cardH / 2)
         overlay.addChild(card)
 
@@ -967,12 +1159,12 @@ extension RunScene {
         }
         let titleSprite = label(title, size: 23 * k, color: finished ? Palette.stitchGold : .white)
         if titleSprite.size.width > cardW - 60 { titleSprite.setScale((cardW - 60) / titleSprite.size.width) }
-        titleSprite.position = CGPoint(x: 0, y: cardH * 0.29)
+        titleSprite.position = CGPoint(x: 0, y: innerTop - 20 * k)
         titleSprite.zPosition = 1
         card.addChild(titleSprite)
         if !subtitle.isEmpty {
             let sub = paragraph(subtitle, size: 12.5 * k, width: cardW - 80, color: Palette.ink)
-            sub.position = CGPoint(x: 0, y: cardH * 0.17)
+            sub.position = CGPoint(x: 0, y: innerTop - 46 * k)
             sub.zPosition = 1
             card.addChild(sub)
         }
@@ -982,7 +1174,7 @@ extension RunScene {
             let has = i < stars
             let starArt = illustrated(has ? "ui-star" : "ui-star-empty", width: 44 * k) ?? art.star(filled: has)
             let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 44 * k, height: 44 * k))
-            star.position = CGPoint(x: CGFloat(i - 1) * 84 * k, y: cardH * 0.0)
+            star.position = CGPoint(x: CGFloat(i - 1) * 84 * k, y: innerTop - 88 * k)
             star.zPosition = 1
             star.setScale(0)
             star.run(.sequence([
@@ -999,7 +1191,7 @@ extension RunScene {
             card.addChild(star)
             let caption = label(starLabels[i], size: 10 * k, color: Palette.stormDark, style: .body)
             if caption.size.width > 82 * k { caption.setScale(82 * k / caption.size.width) }
-            caption.position = CGPoint(x: star.position.x, y: -cardH * 0.1)
+            caption.position = CGPoint(x: star.position.x, y: innerTop - 120 * k)
             caption.zPosition = 1
             card.addChild(caption)
         }
@@ -1020,7 +1212,7 @@ extension RunScene {
         cells.append(("Close calls", "\(stats.closeCalls)"))
         for (index, cell) in cells.enumerated() {
             let column = CGFloat(index % 3 - 1)
-            let rowY = index < 3 ? -cardH * 0.2 : -cardH * 0.32
+            let rowY = innerTop - (index < 3 ? 150 : 192) * k
             let value = SKLabelNode(fontNamed: "Fredoka-SemiBold")
             value.text = cell.1
             value.fontSize = 18 * k

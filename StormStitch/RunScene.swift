@@ -217,6 +217,10 @@ final class RunScene: SKScene {
     var nextThunder = 6.0
     /// How close the storm has come this run (0 far ... 3 almost on you); crossing up a band cracks lightning.
     var stormBand = 0
+    /// How far the whole view has risen so the runner stays clear of a growing storm.
+    var viewLift: CGFloat = 0
+    /// Height of the storm art above its anchor, measured last frame, for keeping it below the runner.
+    var stormTopAbove: CGFloat = 0
     var lightningCooldown = 0.0
 
     // MARK: Modes, gadgets and menus
@@ -992,7 +996,7 @@ final class RunScene: SKScene {
                 guard let self, self.state != .running else { return }
                 self.audio.play(.evilLaugh)
             },
-            .wait(forDuration: 2.1),
+            .wait(forDuration: 2.8),
             .run { [weak self] in
                 guard let self, self.state != .running else { return }
                 self.audio.play(.defeat, volume: 0.8)
@@ -2062,8 +2066,12 @@ final class RunScene: SKScene {
         let follow = CGFloat(playerX) * (unitK / CGFloat(camBack)) * 0.3
         let lean = CGFloat(laneToX - playerX) * 0.035
         let speedT = CGFloat(max(0, min(1, (runSpeed - tuning.startSpeed) / max(tuning.endSpeed - tuning.startSpeed, 0.1))))
+        // As the storm closes in, the view rises so the runner stays in sight above it.
+        let running = state == .running || state == .paused
+        let closeness = running ? CGFloat(1 - max(0, min(1, stormDistance / max(tuning.stormStart, 0.1)))) : 0
+        viewLift += (closeness * size.height * 0.12 - viewLift) * 0.08
         if camRig.action(forKey: "shake") == nil {
-            camRig.position = CGPoint(x: size.width / 2 - follow, y: size.height / 2)
+            camRig.position = CGPoint(x: size.width / 2 - follow, y: size.height / 2 + viewLift)
         }
         camRig.zRotation = lean
         camRig.setScale(1 + 0.05 * speedT)
@@ -2087,7 +2095,14 @@ final class RunScene: SKScene {
         let running = state == .running || state == .paused
         let closeness = running ? CGFloat(1 - max(0, min(1, stormDistance / max(tuning.stormStart, 0.1)))) : 0.0
         let h = size.height
-        let visible = h * (0.07 + closeness * 0.33) + CGFloat(sin(clock * 2.2) * 6)
+        var visible = h * (0.07 + closeness * 0.33) + CGFloat(sin(clock * 2.2) * 6)
+        if running && stormArt != nil {
+            // Never let the wall swallow the runner: its top stays around the runner's knees.
+            let feet = screenPoint(ofWorld: playerShadow.position).y
+            let body = playerNode.calculateAccumulatedFrame().height
+            let cap = feet + body * 0.3
+            visible = min(visible, cap + 8 - stormTopAbove)
+        }
         stormBack.position.y = visible + 18
         stormFront.position.y = visible + CGFloat(sin(clock * 3.1) * 5)
         stormBack.position.x = size.width / 2 + CGFloat(sin(clock * 0.9) * 16)
@@ -2120,6 +2135,7 @@ final class RunScene: SKScene {
                 near.position = CGPoint(x: size.width / 2 + CGFloat(sin(clock * 1.7) * 18) - lane * 28,
                                         y: stormArt.frame.minY - near.frame.height * 0.44 + CGFloat(sin(clock * 2.4) * 6))
             }
+            stormTopAbove = max(stormArt.frame.maxY, stormFar?.frame.maxY ?? 0) - stormArt.position.y
             let lowest = min(stormArt.frame.minY, stormNear?.frame.minY ?? stormArt.frame.minY)
             stormFill.position = CGPoint(x: stormArt.position.x, y: lowest + 2)
             updateStormEyes(closeness: closeness, dt: dt)

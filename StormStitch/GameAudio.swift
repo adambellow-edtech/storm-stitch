@@ -212,6 +212,26 @@ final class GameAudio {
         }
 
         buildStormSounds(noise: &noise)
+        // Recorded takes win over the synthesized ones when they're bundled.
+        if let laugh = loadBuffer("storm-laugh") { buffers[.evilLaugh] = laugh }
+        if let defeat = loadBuffer("storm-defeat") { buffers[.defeat] = defeat }
+    }
+
+    /// Reads a bundled mono 44.1 kHz CAF into a buffer the players can schedule.
+    private func loadBuffer(_ name: String) -> AVAudioPCMBuffer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "caf"),
+              let file = try? AVAudioFile(forReading: url),
+              file.processingFormat.sampleRate == sampleRate,
+              file.processingFormat.channelCount == 1,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)) else {
+            return nil
+        }
+        do {
+            try file.read(into: buffer)
+        } catch {
+            return nil
+        }
+        return buffer
     }
 
     /// Lightning crack, the Shredder's laugh and the defeat sting, all synthesized like the rest.

@@ -289,52 +289,111 @@ extension RunScene {
             return
         }
 
-        // A golden needle zig-zags across the tear, trailing thread.
-        let needleArt = illustrated("needle", width: 150) ?? art.needle
-        let needle = SKSpriteNode(texture: needleArt.texture, size: needleArt.size)
-        needle.zPosition = 20
-        fxRoot.addChild(needle)
-        let thread = SKShapeNode()
-        thread.strokeColor = Palette.stitchGold
-        thread.lineWidth = 6
-        thread.lineCap = .round
-        thread.glowWidth = 3
-        thread.zPosition = 19
-        fxRoot.addChild(thread)
-
-        let stitches = 7
-        let path = CGMutablePath()
-        var actions: [SKAction] = [.wait(forDuration: 0.5)]
-        for i in 0...stitches {
-            actions.append(.run { [weak self, weak needle, weak thread] in
-                guard let self, let needle, let thread else { return }
-                let gatePoint = self.screenPoint(ofWorld: gate.sprite.position)
-                let height = gate.sprite.size.height
-                let topY = gatePoint.y + height * 0.85
-                let bottomY = gatePoint.y + height * 0.12
-                let y = topY - (topY - bottomY) * CGFloat(i) / CGFloat(stitches)
-                let x = gatePoint.x + (i % 2 == 0 ? -1 : 1) * height * 0.13
-                let point = CGPoint(x: x, y: y)
-                if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
-                thread.path = path
-                needle.position = point
-                needle.zRotation = i % 2 == 0 ? -0.6 : 0.6
-                self.audio.play(.stitch, volume: 0.7)
-                self.audio.chime(step: min(i, 8))
-                self.haptics.spool()
-                self.sparkleBurst(at: point, count: 8, spread: .pi * 2, speed: 140)
-            })
-            actions.append(.wait(forDuration: 0.12))
+        // The needle sews cross-stitches down the tear, one X at a time, riding along with the gate.
+        let gateSprite = gate.sprite
+        let gateW = gateSprite.size.width
+        let gateH = gateSprite.size.height
+        // Where the tear runs in the seam-gate painting, as fractions (x from left, y from bottom).
+        let tear: [(x: CGFloat, y: CGFloat)] = [(0.50, 0.72), (0.49, 0.65), (0.47, 0.58), (0.46, 0.51),
+                                                (0.46, 0.44), (0.465, 0.37), (0.475, 0.30)]
+        func local(_ fx: CGFloat, _ fy: CGFloat) -> CGPoint {
+            CGPoint(x: (fx - gateSprite.anchorPoint.x) * gateW, y: (fy - gateSprite.anchorPoint.y) * gateH)
         }
+        let armX = gateW * 0.035, armY = gateH * 0.03
+
+        let needle = SKNode()
+        needle.zPosition = 6
+        let needleArt = illustrated("needle", width: gateW * 0.2) ?? art.needle
+        let needleSprite = SKSpriteNode(texture: needleArt.texture, size: needleArt.size)
+        // The painted needle points down-left; turn it so its tip leads along the path.
+        needleSprite.zRotation = 2.28
+        needleSprite.anchorPoint = CGPoint(x: 0.4, y: 0.4)
+        needle.addChild(needleSprite)
+        needle.position = local(0.62, 0.85)
+        gateSprite.addChild(needle)
+
+        var actions: [SKAction] = [.wait(forDuration: 0.4)]
+        var needleAt = needle.position
+        func travel(to point: CGPoint, lift: CGFloat, duration: TimeInterval) -> SKAction {
+            let path = CGMutablePath()
+            path.move(to: needleAt)
+            let mid = CGPoint(x: (needleAt.x + point.x) / 2 + lift * 0.4, y: max(needleAt.y, point.y) + lift)
+            path.addQuadCurve(to: point, control: mid)
+            needleAt = point
+            return .run { [weak needle] in
+                needle?.run(.follow(path, asOffset: false, orientToPath: true, duration: duration))
+            }
+        }
+        for (i, spot) in tear.enumerated() {
+            let center = local(spot.x, spot.y)
+            let arms = [(CGPoint(x: center.x - armX, y: center.y + armY), CGPoint(x: center.x + armX, y: center.y - armY)),
+                        (CGPoint(x: center.x + armX, y: center.y + armY), CGPoint(x: center.x - armX, y: center.y - armY))]
+            for (j, arm) in arms.enumerated() {
+                actions.append(travel(to: arm.0, lift: gateH * (j == 0 ? 0.06 : 0.04), duration: 0.07))
+                actions.append(.wait(forDuration: 0.07))
+                actions.append(.run { [weak self, weak gateSprite] in
+                    guard let self, let gateSprite else { return }
+                    let stroke = self.threadStroke(from: arm.0, to: arm.1, width: gateW * 0.016)
+                    stroke.zPosition = 5
+                    gateSprite.addChild(stroke)
+                    if j == 1 {
+                        self.audio.play(.stitch, volume: 0.7)
+                        self.audio.chime(step: min(i + 1, 8))
+                        self.haptics.spool()
+                        self.sparkleBurst(at: gateSprite.convert(center, to: self), count: 6, spread: .pi * 2, speed: 110)
+                    }
+                })
+                needleAt = arm.1
+                actions.append(.run { [weak needle] in
+                    needle?.run(.move(to: arm.1, duration: 0.06))
+                })
+                actions.append(.wait(forDuration: 0.06))
+            }
+        }
+        // A last flourish: the needle swoops up and away, pulling the thread tight.
+        actions.append(travel(to: local(0.75, 1.1), lift: gateH * 0.15, duration: 0.3))
+        actions.append(.wait(forDuration: 0.2))
         actions.append(.run { [weak self] in self?.celebrationFlood() })
-        actions.append(.run { [weak needle, weak thread] in
-            needle?.run(.sequence([.group([.moveBy(x: 260, y: 420, duration: 0.5), .fadeOut(withDuration: 0.5)]), .removeFromParent()]))
-            thread?.run(.sequence([.wait(forDuration: 0.6), .fadeOut(withDuration: 0.6), .removeFromParent()]))
-            gate.sprite.run(.group([.scale(by: 1.15, duration: 0.6), .fadeOut(withDuration: 0.6)]))
+        actions.append(.run { [weak needle] in
+            needle?.run(.sequence([.fadeOut(withDuration: 0.3), .removeFromParent()]))
+            gate.sprite.run(.sequence([.wait(forDuration: 0.5), .group([.scale(by: 1.15, duration: 0.6), .fadeOut(withDuration: 0.6)])]))
         })
         actions.append(.wait(forDuration: 1.8))
         actions.append(.run { [weak self] in self?.finishRun() })
         run(.sequence(actions), withKey: "celebrate")
+    }
+
+    /// One arm of a cross-stitch: gold thread with a darker edge, drawn out from its start like it's being pulled through.
+    func threadStroke(from a: CGPoint, to b: CGPoint, width: CGFloat) -> SKNode {
+        let node = SKNode()
+        node.position = a
+        node.zRotation = atan2(b.y - a.y, b.x - a.x)
+        let length = hypot(b.x - a.x, b.y - a.y)
+        let path = CGMutablePath()
+        path.move(to: .zero)
+        // A slight sag makes it read as thread, not a ruled line.
+        path.addQuadCurve(to: CGPoint(x: length, y: 0), control: CGPoint(x: length / 2, y: -width * 0.6))
+        let edge = SKShapeNode(path: path)
+        edge.strokeColor = UIColor(hex: 0x7A4E0E)
+        edge.lineWidth = width * 1.7
+        edge.lineCap = .round
+        node.addChild(edge)
+        let gold = SKShapeNode(path: path)
+        gold.strokeColor = Palette.stitchGold
+        gold.lineWidth = width
+        gold.lineCap = .round
+        gold.zPosition = 0.1
+        node.addChild(gold)
+        let shine = SKShapeNode(path: path)
+        shine.strokeColor = UIColor(white: 1, alpha: 0.55)
+        shine.lineWidth = width * 0.3
+        shine.lineCap = .round
+        shine.position = CGPoint(x: 0, y: width * 0.25)
+        shine.zPosition = 0.2
+        node.addChild(shine)
+        node.xScale = 0.05
+        node.run(.scaleX(to: 1, duration: 0.06))
+        return node
     }
 
     /// The whole screen floods with color and confetti.
