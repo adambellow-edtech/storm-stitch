@@ -32,6 +32,11 @@ Change the bundle ID in `project.yml` if `com.adambellow.stormstitch` doesn't ma
 - **Sound and music.** A catchy, fun-spooky groove that builds with the run, plus synthesized effects for every action.
 - **Screens.** An animated title, a results card with 3 stars (Finish, No hits, Stitched), stats and your best score.
 - **Close calls.** Dodge a hazard at the last moment for +3 spools.
+- **The cast.** Pick from 8 monsters on the title screen (arrows, or tap the card). Each has one passive:
+  - Bramble shrugs off the first hit. Blotch's hits pull the storm in less. Snipjaw slides snip through boxes.
+  - Fizz changes lanes faster. Origo glides down from jumps. Wickling lights up extra spools.
+  - Stickle grabs spools from the next lane. Thundercap makes the storm fall back faster.
+  - All 8 are unlocked in this build; unlocking with monster scraps comes with progression.
 
 All art and audio are generated in code as stand-ins (`PaperArt.swift`, `GameAudio.swift`), so final illustrated assets and a composed score can be swapped in by name later.
 

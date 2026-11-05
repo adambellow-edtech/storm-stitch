@@ -1,7 +1,7 @@
 import SpriteKit
 import UIKit
 
-/// Storm Stitch vertical slice: Notebook Meadow with Bramble.
+/// Storm Stitch vertical slice: Notebook Meadow, with the full cast of eight monsters.
 /// The world starts gray and torn. Every spool you grab stitches color back in
 /// around you, and the storm chases from behind. Drawn with a simple pseudo-3D
 /// projection so the camera sits behind the runner, like the hero style frame.
@@ -129,6 +129,12 @@ final class RunScene: SKScene {
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
     private var poseTextures: [String: (texture: SKTexture, size: CGSize)] = [:]
     private var currentPose = ""
+    /// The monster running this session, and title-screen picker state.
+    private var monster = Monster.roster[Monster.selectedIndex]
+    private var pickerNode: SKNode?
+    private var pickerWidth: CGFloat = 0
+    /// Bramble's once-per-run shrug.
+    private var shrugUsed = false
     private var hitPoseTimer = 0.0
     /// Pause button in the HUD, and the 3-2-1 countdown when resuming.
     private let pauseButton = SKNode()
@@ -774,14 +780,8 @@ final class RunScene: SKScene {
         button.zPosition = 2
         overlay.addChild(button)
 
-        let best = UserDefaults.standard.integer(forKey: "bestSpools")
-        if best > 0 {
-            let bestArt = art.text("Best: \(best) spools", size: 17, fill: .white, style: .body)
-            let bestSprite = SKSpriteNode(texture: bestArt.texture, size: bestArt.size)
-            bestSprite.position = CGPoint(x: w / 2, y: buttonY + buttonWidth * 0.29)
-            bestSprite.zPosition = 2
-            overlay.addChild(bestSprite)
-        }
+        let buttonTop = buttonY + buttonWidth * 300.0 / 720.0 / 2
+        buildPicker(aboveY: buttonTop + 8)
 
         let help = art.text("Swipe to change lanes  \u{00B7}  Tap to jump  \u{00B7}  Swipe down to slide",
                             size: min(12, w * 0.03), fill: .white, style: .body)
@@ -961,6 +961,7 @@ final class RunScene: SKScene {
         slideTimer = 0
         hitPoseTimer = 0
         eyePop = 0
+        shrugUsed = false
         landSquash = 0
         jumpBuffer = 0
         trackedTouch = nil
@@ -1072,7 +1073,8 @@ final class RunScene: SKScene {
         }
 
         if laneProgress < 1 {
-            laneProgress = min(1, laneProgress + dt / max(tuning.laneSwitchTime, 0.01))
+            let switchTime = tuning.laneSwitchTime * (monster.ability == .quick ? 0.7 : 1)
+            laneProgress = min(1, laneProgress + dt / max(switchTime, 0.01))
             playerX = laneFromX + (laneToX - laneFromX) * (1 - pow(1 - laneProgress, 2))
         }
         updatePlayerPhysics(dt)
@@ -1089,7 +1091,8 @@ final class RunScene: SKScene {
         checkCollisions()
         guard state == .running else { return }
 
-        stormDistance = min(tuning.stormStart, stormDistance + tuning.stormRecoverRate * dt)
+        let recover = tuning.stormRecoverRate * (monster.ability == .counterstorm ? 2.2 : 1)
+        stormDistance = min(tuning.stormStart, stormDistance + recover * dt)
         if stormDistance <= 0 {
             endRun(caught: true)
             return
@@ -1114,7 +1117,11 @@ final class RunScene: SKScene {
 
     private func updatePlayerPhysics(_ dt: Double) {
         if playerY > 0 || velocityY > 0 {
-            let g = velocityY < 0 ? tuning.gravity * tuning.fallMultiplier : tuning.gravity
+            var g = velocityY < 0 ? tuning.gravity * tuning.fallMultiplier : tuning.gravity
+            // Origo floats down slowly unless you slam.
+            if monster.ability == .glide && velocityY < 0 && velocityY > -tuning.jumpVelocity * 1.2 {
+                g *= 0.4
+            }
             velocityY -= g * dt
             playerY += velocityY * dt
             if playerY <= 0 {
@@ -1186,14 +1193,15 @@ final class RunScene: SKScene {
         }
 
         let roll = Double.random(in: 0...1)
-        if let lowLane, roll < 0.35 {
+        let glow = monster.ability == .glow
+        if let lowLane, roll < (glow ? 0.5 : 0.35) {
             let offsets = [-2.4, -1.2, 0.0, 1.2, 2.4]
             let heights = [0.5, 0.95, 1.2, 0.95, 0.5]
             for i in 0..<offsets.count {
                 addSpool(lane: lowLane, z: z + offsets[i], y: heights[i])
             }
-        } else if roll < 0.85 {
-            for i in 0..<5 {
+        } else if roll < (glow ? 1.01 : 0.85) {
+            for i in 0..<(glow ? 7 : 5) {
                 addSpool(lane: freeLane, z: z + Double(i) * 1.2, y: 0.4)
             }
         }
@@ -1417,7 +1425,9 @@ final class RunScene: SKScene {
             let passing = thing.z <= -0.35
             if passing { thing.resolved = true }
 
-            guard abs(thing.x - playerX) < 0.55 else {
+            var reach = 0.55
+            if case .spool = thing.kind, monster.ability == .sticky { reach = 1.55 }
+            guard abs(thing.x - playerX) < reach else {
                 if passing, thing.isHazard { checkCloseCall(thing) }
                 continue
             }
@@ -1433,6 +1443,11 @@ final class RunScene: SKScene {
                 case .low: hit = playerY < 0.5
                 case .overhead: hit = playerTop > 0.85
                 case .crate: hit = playerY < 1.4
+                }
+                if hit, hazard == .crate, monster.ability == .snip, slideTimer > 0 {
+                    thing.resolved = true
+                    snipThrough(thing)
+                    continue
                 }
                 if hit {
                     thing.resolved = true
@@ -1483,11 +1498,24 @@ final class RunScene: SKScene {
 
     private func takeHit(from thing: Thing) {
         guard invulnerable <= 0 else { return }
+        if monster.ability == .shrug && !shrugUsed {
+            shrugUsed = true
+            invulnerable = 0.9
+            eyePop = 0.3
+            audio.play(.closeCall)
+            haptics.lane()
+            shake(strength: 5)
+            let point = screenPoint(ofWorld: thing.sprite.position)
+            thing.sprite.removeFromParent()
+            confettiBurst(at: point)
+            popText("Shrugged it off!", size: 24, color: .white, at: playerScreenPoint(offsetY: 130), rise: 40, life: 0.9)
+            return
+        }
         heartsLeft -= 1
         hitsTaken += 1
         invulnerable = 1.3
         streak = 0
-        stormDistance -= tuning.stormHitPenalty
+        stormDistance -= tuning.stormHitPenalty * (monster.ability == .ink ? 0.55 : 1)
         meter = max(0, meter - 0.08)
         hitStop = 0.07
         eyePop = 0.6
@@ -1578,6 +1606,7 @@ final class RunScene: SKScene {
 
         switch state {
         case .title:
+            if handlePickerTap(at: touch.location(in: self)) { return }
             startRun()
             return
         case .over:
@@ -1852,9 +1881,10 @@ final class RunScene: SKScene {
         var bob: CGFloat = 0
         let stride = sin(runPhase * .pi)
 
+        let hasPoses = monster.id == "bramble"
         if sliding {
-            sx = 1
-            sy = 1
+            sx = hasPoses ? 1 : 1.25
+            sy = hasPoses ? 1 : 0.55
         } else if landSquash > 0 {
             let amount = CGFloat(landSquash / landSquashTime)
             sx = 1 + 0.18 * amount
@@ -1872,26 +1902,42 @@ final class RunScene: SKScene {
         rig.position = CGPoint(x: 0, y: bob * rigBaseScale)
         rig.zRotation = CGFloat((laneToX - playerX) * -0.35)
 
-        // Pick the pose. Results: cheering or dizzy, facing you. Running: hit, slide, jump or run.
+        // Pick the pose. Results: facing you (Bramble cheers or sits dizzy). Running: hit, slide, jump or run.
         let running = state != .over
+        let id = monster.id
         if !running {
-            if eyeDefeated {
+            if hasPoses && eyeDefeated {
                 setPose("bramble-win", height: 150)
-            } else if eyeGloat {
+            } else if hasPoses && eyeGloat {
                 setPose("bramble-lose", height: 150)
             } else {
-                setPose("bramble-front", height: 120)
+                setPose("\(id)-front", height: monster.frontHeight)
             }
-        } else if hitPoseTimer > 0 {
+            if !hasPoses && eyeDefeated {
+                // A happy hop for the winners.
+                rig.position.y = CGFloat(abs(sin(clock * 5.5))) * 16
+            } else if !hasPoses && eyeGloat {
+                rig.zRotation = 0.14 * CGFloat(sin(clock * 2))
+                rig.yScale = rigBaseScale * 0.92
+            }
+        } else if hasPoses && hitPoseTimer > 0 {
             setPose("bramble-hit", height: 144)
-        } else if sliding {
+        } else if hasPoses && sliding {
             setPose("bramble-slide", height: 96)
-        } else if airborne {
+        } else if hasPoses && airborne {
             setPose("bramble-jump", height: 156)
         } else {
-            setPose("bramble-back", height: 120)
+            setPose("\(id)-back", height: monster.runHeight)
         }
-        // Two-frame run cycle: flip the back view on every stride so the raised foot alternates.
+        if running && !hasPoses {
+            if hitPoseTimer > 0 {
+                rig.zRotation += CGFloat(sin(hitPoseTimer * 40) * 0.3)
+            } else if !airborne && !sliding {
+                // A waddle, since the others only have one back view.
+                rig.zRotation += CGFloat(stride) * 0.09
+            }
+        }
+        // Bramble's two-frame run cycle: flip the back view on every stride so the raised foot alternates.
         if running && currentPose == "bramble-back" {
             brambleSprite.xScale = stride >= 0 ? 1 : -1
         } else {
@@ -2057,7 +2103,110 @@ final class RunScene: SKScene {
         eyes.alpha = 0.88 + 0.12 * CGFloat(sin(clock * (4 + Double(closeness) * 8)))
     }
 
-    /// Swaps Bramble's picture, keeping the feet on the ground and the body a steady size.
+    // MARK: Monster picker
+
+    /// A paper card on the title screen: the monster, its passive, and arrows to switch.
+    private func buildPicker(aboveY bottom: CGFloat) {
+        pickerNode?.removeFromParent()
+        let w = size.width
+        let cardW = min(w - 32, 340)
+        let cardH = cardW * 300.0 / 720.0
+        pickerWidth = cardW
+        let node = SKNode()
+        node.position = CGPoint(x: w / 2, y: bottom + cardH / 2)
+        node.zPosition = 2
+        overlay.addChild(node)
+        pickerNode = node
+
+        if let paper = imageSprite("ui-button") {
+            paper.size = CGSize(width: cardW, height: cardH)
+            node.addChild(paper)
+        }
+
+        // Arrows on both ends.
+        for side in [CGFloat(-1), 1] {
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: side * 9, y: 0))
+            path.addLine(to: CGPoint(x: -side * 6, y: 11))
+            path.addLine(to: CGPoint(x: -side * 6, y: -11))
+            path.closeSubpath()
+            let arrow = SKShapeNode(path: path)
+            arrow.fillColor = Palette.ink
+            arrow.strokeColor = .clear
+            arrow.position = CGPoint(x: side * (cardW / 2 - 26), y: 0)
+            arrow.zPosition = 1
+            node.addChild(arrow)
+        }
+
+        // The monster, facing you.
+        let thumbBox = CGSize(width: cardW * 0.27, height: cardH * 0.76)
+        let thumbX = -cardW / 2 + 44 + thumbBox.width / 2
+        if let thumb = imageSprite("\(monster.id)-front") {
+            let scale = min(thumbBox.width / thumb.size.width, thumbBox.height / thumb.size.height)
+            thumb.size = CGSize(width: thumb.size.width * scale, height: thumb.size.height * scale)
+            thumb.position = CGPoint(x: thumbX, y: 0)
+            thumb.zPosition = 1
+            node.addChild(thumb)
+            thumb.setScale(0.8)
+            thumb.run(.scale(to: 1, duration: 0.12))
+        }
+
+        // Name, passive, and best score.
+        let textX = thumbX + thumbBox.width / 2 + 8
+        let name = art.text(monster.name, size: min(23, cardW * 0.07), fill: Palette.stitchGold)
+        let nameSprite = SKSpriteNode(texture: name.texture, size: name.size)
+        nameSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
+        nameSprite.position = CGPoint(x: textX - 4, y: cardH * 0.16)
+        nameSprite.zPosition = 1
+        node.addChild(nameSprite)
+
+        let passive = art.text(monster.passive, size: min(12, cardW * 0.036), fill: .white, style: .body)
+        let passiveSprite = SKSpriteNode(texture: passive.texture, size: passive.size)
+        passiveSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
+        passiveSprite.position = CGPoint(x: textX - 2, y: -cardH * 0.07)
+        passiveSprite.zPosition = 1
+        node.addChild(passiveSprite)
+
+        let best = UserDefaults.standard.integer(forKey: "bestSpools")
+        let index = Monster.selectedIndex
+        let footer = best > 0 ? "\(index + 1) of \(Monster.roster.count)  \u{00B7}  Best: \(best)" : "\(index + 1) of \(Monster.roster.count)"
+        let footerArt = art.text(footer, size: min(11, cardW * 0.032), fill: .white, style: .body)
+        let footerSprite = SKSpriteNode(texture: footerArt.texture, size: footerArt.size)
+        footerSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
+        footerSprite.position = CGPoint(x: textX - 2, y: -cardH * 0.26)
+        footerSprite.zPosition = 1
+        node.addChild(footerSprite)
+    }
+
+    /// Arrows switch monsters; tapping the card goes to the next one. Returns true when the tap was used.
+    private func handlePickerTap(at point: CGPoint) -> Bool {
+        guard let node = pickerNode else { return false }
+        let cardH = pickerWidth * 300.0 / 720.0
+        let dx = point.x - node.position.x
+        let dy = point.y - node.position.y
+        guard abs(dx) < pickerWidth / 2 + 10, abs(dy) < cardH / 2 + 10 else { return false }
+        let step = dx < -pickerWidth * 0.32 ? -1 : 1
+        Monster.selectedIndex = Monster.selectedIndex + step
+        monster = Monster.roster[Monster.selectedIndex]
+        currentPose = ""
+        audio.chime(step: Monster.selectedIndex % 5)
+        haptics.lane()
+        buildPicker(aboveY: node.position.y - cardH / 2)
+        return true
+    }
+
+    /// Snipjaw slices a box in half instead of crashing into it.
+    private func snipThrough(_ thing: Thing) {
+        let point = screenPoint(ofWorld: thing.sprite.position)
+        thing.sprite.removeFromParent()
+        confettiBurst(at: point)
+        audio.play(.closeCall)
+        haptics.spool()
+        spools += 2
+        popText("Snip! +2", size: 24, color: .white, at: playerScreenPoint(offsetY: 120), rise: 40, life: 0.8)
+    }
+
+    /// Swaps the runner's picture, keeping the feet on the ground and the body a steady size.
     private func setPose(_ name: String, height: CGFloat) {
         guard name != currentPose else { return }
         let entry: (texture: SKTexture, size: CGSize)
