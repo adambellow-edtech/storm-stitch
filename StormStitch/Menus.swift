@@ -311,7 +311,7 @@ extension RunScene {
     /// A smooth curve between stage i and i+1 (Catmull-Rom through its neighbours), with a gentle sideways bow.
     func mapCurve(_ spots: [CGPoint], from i: Int) -> (path: CGPath, point: (CGFloat) -> CGPoint) {
         let p0 = spots[max(0, i - 1)], p1 = spots[i], p2 = spots[i + 1], p3 = spots[min(spots.count - 1, i + 2)]
-        let bow: CGFloat = i % 2 == 0 ? 18 : -18
+        let bow: CGFloat = i % 2 == 0 ? 6 : -6
         let dx = p2.x - p1.x, dy = p2.y - p1.y
         let length = max(1, hypot(dx, dy))
         let normal = CGPoint(x: -dy / length * bow, y: dx / length * bow)
@@ -398,8 +398,14 @@ extension RunScene {
             return plain
         }
         background.addChild(fill(world.mapGray, fallback: UIColor(hex: 0xA9ABB6)))
-        let area = CGRect(x: 40, y: safeBottom + 140, width: w - 80, height: h - safeTop - 165 - (safeBottom + 140))
-        let spots = mapSpots.map { CGPoint(x: area.minX + $0.x * area.width, y: area.minY + $0.y * area.height) }
+        // Markers sit on the painted path. The map fills the screen (cropped to fit), so place them on the
+        // picture itself, then keep them clear of the title bar and the Endless button.
+        let picture = (background.children.first as? SKSpriteNode)?.frame ?? CGRect(origin: .zero, size: size)
+        let lowest = safeBottom + 140, highest = h - safeTop - 110
+        let spots = world.mapPath.map { p -> CGPoint in
+            CGPoint(x: min(max(picture.minX + p.x * picture.width, 36), w - 36),
+                    y: min(max(picture.maxY - p.y * picture.height, lowest), highest))
+        }
         // Color soaks back in around cleared stages and along the path between them, with soft, uneven edges.
         let colorMap = fill(world.mapColor, fallback: UIColor(hex: 0x7FCF84))
         let cleared = (0..<spots.count).filter { progress.stars(forStage: base + $0) > 0 }
@@ -438,11 +444,15 @@ extension RunScene {
 
         // Stage spots.
         let current = progress.nextStageIndex
+        // Shrink the markers when the path packs them close (smaller iPhones), so the stars never overlap.
+        let spacing = zip(spots, spots.dropFirst()).map { hypot($0.x - $1.x, $0.y - $1.y) }.min() ?? 80
+        let markerScale = min(1, max(0.62, spacing / 68))
         for (i, spot) in spots.enumerated() {
             let isOpen = progress.isStageOpen(base + i)
             let node = SKNode()
             node.position = spot
             node.zPosition = 2
+            node.setScale(markerScale)
             overlay.addChild(node)
             let disc = SKShapeNode(circleOfRadius: 25)
             disc.fillColor = isOpen ? Palette.paper : UIColor(hex: 0x8A8C99)
@@ -461,7 +471,7 @@ extension RunScene {
                 node.addChild(sprite)
             }
             if base + i == current && isOpen {
-                node.run(.repeatForever(.sequence([.scale(to: 1.1, duration: 0.5), .scale(to: 1, duration: 0.5)])))
+                node.run(.repeatForever(.sequence([.scale(to: markerScale * 1.1, duration: 0.5), .scale(to: markerScale, duration: 0.5)])))
                 if let runner = monsterPortrait(monster, box: CGSize(width: 54, height: 54)) {
                     runner.position = CGPoint(x: 0, y: 58)
                     node.addChild(runner)

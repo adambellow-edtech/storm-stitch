@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// The art a run is dressed in. Every name is optional and falls back to Notebook Meadow's
@@ -60,6 +61,27 @@ struct World {
     func artName(_ part: String) -> String { id == "meadow" ? part : "\(id)-\(part)" }
     var mapColor: String { artName("map-color") }
     var mapGray: String { artName("map-gray") }
+
+    /// Where the ten stage markers sit on this world's painted map: fractions of the picture,
+    /// x from the left and y from the top, traced along its path from the first stage to the last.
+    var mapPath: [CGPoint] {
+        let points: [(CGFloat, CGFloat)]
+        switch id {
+        case "canyon":
+            points = [(0.33, 0.76), (0.44, 0.70), (0.60, 0.64), (0.53, 0.58), (0.40, 0.52),
+                      (0.46, 0.46), (0.59, 0.40), (0.48, 0.34), (0.45, 0.28), (0.50, 0.22)]
+        case "lagoon":
+            points = [(0.57, 0.76), (0.46, 0.70), (0.38, 0.64), (0.62, 0.58), (0.45, 0.52),
+                      (0.45, 0.46), (0.65, 0.40), (0.52, 0.34), (0.49, 0.28), (0.57, 0.22)]
+        case "peaks":
+            points = [(0.51, 0.76), (0.27, 0.70), (0.48, 0.64), (0.73, 0.58), (0.38, 0.52),
+                      (0.48, 0.46), (0.57, 0.40), (0.45, 0.34), (0.52, 0.28), (0.58, 0.22)]
+        default:
+            points = [(0.38, 0.76), (0.46, 0.70), (0.44, 0.64), (0.37, 0.58), (0.28, 0.52),
+                      (0.47, 0.46), (0.59, 0.40), (0.46, 0.34), (0.56, 0.28), (0.66, 0.22)]
+        }
+        return points.map { CGPoint(x: $0.0, y: $0.1) }
+    }
 
     /// Nil for Notebook Meadow, which uses the default art (or the holiday look).
     var theme: Theme? {
