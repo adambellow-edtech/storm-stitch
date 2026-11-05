@@ -504,6 +504,11 @@ final class RunScene: SKScene {
             stormNear = near
             stormFill.anchorPoint = CGPoint(x: 0.5, y: 1)
             stormFill.zPosition = 0.5
+            // Below the torn edge the storm deepens to dark ink instead of a flat gray band,
+            // which showed on tall phones when the wall rises to its highest point.
+            stormFill.texture = stormFillTexture()
+            stormFill.color = .white
+            stormFill.colorBlendFactor = 0
             stormRoot.addChild(stormFill)
             for node in [stormBack, stormFront] + stormEyes {
                 node.isHidden = true
@@ -1255,6 +1260,20 @@ final class RunScene: SKScene {
     /// Loads an illustrated PNG from the app bundle, sized to `width` art units (100 per world unit).
     /// Returns nil when the image hasn't been added yet, so the code-drawn stand-in is used instead.
     var illustratedCache: [String: Art] = [:]
+    /// A vertical gradient from the near storm layer's bottom color down to deep ink.
+    func stormFillTexture() -> SKTexture {
+        let size = CGSize(width: 4, height: 256)
+        let image = UIGraphicsImageRenderer(size: size).image { ctx in
+            let colors = [UIColor(hex: 0x55485C).cgColor, UIColor(hex: 0x3A3048).cgColor, UIColor(hex: 0x2B2340).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.05, 0.14]) {
+                ctx.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [.drawsAfterEndLocation])
+            }
+        }
+        let texture = SKTexture(image: image)
+        texture.filteringMode = .linear
+        return texture
+    }
+
     func illustrated(_ name: String, width: CGFloat) -> Art? {
         if let cached = illustratedCache[name] { return cached }
         guard let image = artImage(name), image.size.width > 0 else { return nil }

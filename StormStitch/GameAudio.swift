@@ -13,6 +13,23 @@ final class GameAudio {
     var musicOn = true {
         didSet { synth.volume = musicOn ? 0.5 : 0 }
     }
+
+    // Recorded score: a calm layer that always plays and a drive layer (drums, accordion, fiddle)
+    // that fades in as the storm closes. Both loop together. Falls back to the synth if missing.
+    private let songFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+    private let songBase = AVAudioPlayerNode()
+    private let songDrive = AVAudioPlayerNode()
+    private var songLoaded = ""
+    private var songName = "main"
+    private var songWanted = false
+    private var songRunning = false
+    private var songFade: Float = 0
+    private var driveLevel: Float = 0
+    private var driveTarget: Float = 0
+    private var songTimer: Timer?
+    private var songRetry = 0
+    private var songCache: (name: String, base: AVAudioPCMBuffer, drive: AVAudioPCMBuffer)?
+    private lazy var hasSong: Bool = Bundle.main.url(forResource: "music-main-base", withExtension: "caf") != nil
     var sfxOn = true
 
     private let engine = AVAudioEngine()
@@ -57,9 +74,82 @@ final class GameAudio {
         engine.attach(source)
         engine.connect(source, to: engine.mainMixerNode, format: format)
 
+        for node in [songBase, songDrive] {
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: songFormat)
+            node.volume = 0
+        }
+
         buildSounds()
         engine.prepare()
         try? engine.start()
+
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tickSong() }
+        RunLoop.main.add(timer, forMode: .common)
+        songTimer = timer
+    }
+
+    private func loadSong(_ name: String) -> (AVAudioPCMBuffer, AVAudioPCMBuffer)? {
+        if let cache = songCache, cache.name == name { return (cache.base, cache.drive) }
+        func read(_ file: String) -> AVAudioPCMBuffer? {
+            guard let url = Bundle.main.url(forResource: file, withExtension: "caf"),
+                  let audio = try? AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false),
+                  audio.processingFormat.channelCount == 2, audio.processingFormat.sampleRate == 44_100,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: songFormat, frameCapacity: AVAudioFrameCount(audio.length)) else { return nil }
+            do { try audio.read(into: buffer) } catch { return nil }
+            return buffer
+        }
+        guard let base = read("music-\(name)-base"), let drive = read("music-\(name)-drive") else { return nil }
+        songCache = (name, base, drive)  // Keep only the current song in memory.
+        return (base, drive)
+    }
+
+    /// Starts both layers from the top on the same sample so they stay locked together.
+    private func startSong() {
+        guard let pair = loadSong(songName) ?? (songName == "main" ? nil : loadSong("main")) else {
+            // The files wouldn't load: go back to the synthesized music for this session.
+            hasSong = false
+            synth.playing = songWanted
+            return
+        }
+        let (base, drive) = pair
+        if !engine.isRunning { try? engine.start() }
+        guard engine.isRunning else { return }
+        songBase.stop()
+        songDrive.stop()
+        songBase.scheduleBuffer(base, at: nil, options: .loops, completionHandler: nil)
+        songDrive.scheduleBuffer(drive, at: nil, options: .loops, completionHandler: nil)
+        let start = AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.08))
+        songBase.play(at: start)
+        songDrive.play(at: start)
+        songLoaded = songName
+        songRunning = true
+    }
+
+    private func stopSong() {
+        songBase.stop()
+        songDrive.stop()
+        songRunning = false
+    }
+
+    /// Fades the song in and out and eases the drive layer toward the current intensity.
+    private func tickSong() {
+        guard hasSong else { return }
+        if songWanted && musicOn {
+            songRetry -= 1
+            if (!songRunning || songLoaded != songName) && songRetry <= 0 {
+                songRetry = 30  // At most one start attempt a second if the engine is unavailable.
+                songFade = 0
+                startSong()
+            }
+            songFade = min(1, songFade + Float(1.0 / 18))
+        } else {
+            songFade = max(0, songFade - Float(1.0 / 15))
+            if songFade == 0 && songRunning { stopSong() }
+        }
+        driveLevel += (driveTarget - driveLevel) * 0.06
+        songBase.volume = songFade * 0.6
+        songDrive.volume = songFade * 0.6 * driveLevel
     }
 
     // MARK: Playback
@@ -76,7 +166,12 @@ final class GameAudio {
     }
 
     func setMusic(playing: Bool) {
-        synth.playing = playing
+        if hasSong {
+            synth.playing = false
+            songWanted = playing
+        } else {
+            synth.playing = playing
+        }
     }
 
     // MARK: Story score
@@ -89,6 +184,7 @@ final class GameAudio {
     /// Swaps the looping game music for the story's own score, from the top.
     func startStoryScore() {
         synth.playing = false
+        songWanted = false
         guard musicOn else { return }
         if storyPlayer == nil, let url = Bundle.main.url(forResource: "story-score", withExtension: "m4a") {
             storyPlayer = try? AVAudioPlayer(contentsOf: url)
@@ -122,10 +218,13 @@ final class GameAudio {
     /// Switches the song to its holiday version (or back).
     func setMusicTheme(_ holiday: Holiday?) {
         synth.theme = holiday == .snow ? 2 : holiday == .harvest ? 1 : 0
+        songName = holiday == .snow ? "winter" : holiday == .harvest ? "harvest" : "main"
     }
 
     func setIntensity(_ value: Float) {
         synth.intensity = max(0, min(1, value))
+        // The drive layer comes in once a run gets going and is at full strength as the storm closes.
+        driveTarget = max(0, min(1, (value - 0.3) / 0.45))
     }
 
     private func schedule(_ buffer: AVAudioPCMBuffer, volume: Float) {
