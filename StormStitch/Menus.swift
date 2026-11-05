@@ -214,7 +214,7 @@ extension RunScene {
         mode = .endless
         config = makeConfig(for: .endless)
         applyFog()
-        applyTheme(currentHoliday())
+        applyTheme(themeFor(nil))
         monster = Monster.roster[Monster.selectedIndex]
         if !Progress.shared.isUnlocked(monster) { monster = Monster.roster[0] }
         currentPose = ""
@@ -283,7 +283,7 @@ extension RunScene {
         play.position = CGPoint(x: w / 2, y: playY)
         play.zPosition = 2
         overlay.addChild(play)
-        onTap(play) { [unowned self] in self.showMap() }
+        onTap(play) { [unowned self] in self.showMap(world: World.index(ofStage: Progress.shared.nextStageIndex)) }
 
         if let holiday = currentHoliday() {
             let ribbon = paperButton("\(holiday.raceName)!", width: min(210, w * 0.54), pulse: false)
@@ -367,19 +367,27 @@ extension RunScene {
         return shader
     }
 
-    func showMap() {
+    func showMap(world requested: Int? = nil) {
         state = .menu
         clearScreen()
         hud.alpha = 0
         let w = size.width
         let h = size.height
         let progress = Progress.shared
+        let worldIndex = requested ?? mapWorld ?? World.index(ofStage: progress.nextStageIndex)
+        let world = World.all[worldIndex]
+        let base = world.firstStage
+        mapWorld = worldIndex
+        // A world opens once the last stage of the one before it is cleared.
+        let worldOpen = base == 0 || progress.stars(forStage: base - 1) > 0
 
         // Background: the gray map, with color showing through around cleared stages.
         let background = SKNode()
         overlay.addChild(background)
         func fill(_ name: String, fallback: UIColor) -> SKNode {
-            if let sprite = imageSprite(name) {
+            // A world without its own map yet borrows Notebook Meadow's.
+            let meadowName = name.replacingOccurrences(of: "\(world.id)-", with: "")
+            if let sprite = imageSprite(name) ?? imageSprite(meadowName) {
                 let k = max(w / sprite.size.width, h / sprite.size.height)
                 sprite.size = CGSize(width: sprite.size.width * k, height: sprite.size.height * k)
                 sprite.position = CGPoint(x: w / 2, y: h / 2)
@@ -389,14 +397,14 @@ extension RunScene {
             plain.position = CGPoint(x: w / 2, y: h / 2)
             return plain
         }
-        background.addChild(fill("map-gray", fallback: UIColor(hex: 0xA9ABB6)))
+        background.addChild(fill(world.mapGray, fallback: UIColor(hex: 0xA9ABB6)))
         let area = CGRect(x: 40, y: safeBottom + 140, width: w - 80, height: h - safeTop - 165 - (safeBottom + 140))
         let spots = mapSpots.map { CGPoint(x: area.minX + $0.x * area.width, y: area.minY + $0.y * area.height) }
         // Color soaks back in around cleared stages and along the path between them, with soft, uneven edges.
-        let colorMap = fill("map-color", fallback: UIColor(hex: 0x7FCF84))
-        let cleared = (0..<spots.count).filter { progress.stars(forStage: $0) > 0 }
+        let colorMap = fill(world.mapColor, fallback: UIColor(hex: 0x7FCF84))
+        let cleared = (0..<spots.count).filter { progress.stars(forStage: base + $0) > 0 }
         if !cleared.isEmpty, let colorSprite = colorMap as? SKSpriteNode, colorSprite.texture != nil {
-            var blobs: [(center: CGPoint, radius: CGFloat, seed: UInt64)] = cleared.map { (spots[$0], w * 0.3, UInt64($0 + 1)) }
+            var blobs: [(center: CGPoint, radius: CGFloat, seed: UInt64)] = cleared.map { (spots[$0], w * 0.3, UInt64(base + $0 + 1)) }
             for i in cleared where i + 1 < spots.count {
                 let segment = mapCurve(spots, from: i)
                 for (j, t) in [0.25, 0.5, 0.75].enumerated() {
@@ -409,7 +417,7 @@ extension RunScene {
 
         // The path curves between stages, stitched in gold where you've been.
         for i in 0..<(spots.count - 1) {
-            let done = progress.stars(forStage: i) > 0
+            let done = progress.stars(forStage: base + i) > 0
             let path = mapCurve(spots, from: i).path
             if done {
                 let shadow = SKShapeNode(path: path.copy(dashingWithPhase: 0, lengths: [14, 7]))
@@ -431,7 +439,7 @@ extension RunScene {
         // Stage spots.
         let current = progress.nextStageIndex
         for (i, spot) in spots.enumerated() {
-            let isOpen = progress.isStageOpen(i)
+            let isOpen = progress.isStageOpen(base + i)
             let node = SKNode()
             node.position = spot
             node.zPosition = 2
@@ -444,7 +452,7 @@ extension RunScene {
             let number = label("\(i + 1)", size: 22, color: isOpen ? Palette.stitchGold : .white)
             number.zPosition = 1
             node.addChild(number)
-            let stars = progress.stars(forStage: i)
+            let stars = progress.stars(forStage: base + i)
             for s in 0..<3 {
                 let star = illustrated(s < stars ? "ui-star" : "ui-star-empty", width: 16) ?? art.star(filled: s < stars)
                 let sprite = SKSpriteNode(texture: star.texture, size: CGSize(width: 17, height: 17))
@@ -452,7 +460,7 @@ extension RunScene {
                 sprite.zPosition = 1
                 node.addChild(sprite)
             }
-            if i == current && isOpen {
+            if base + i == current && isOpen {
                 node.run(.repeatForever(.sequence([.scale(to: 1.1, duration: 0.5), .scale(to: 1, duration: 0.5)])))
                 if let runner = monsterPortrait(monster, box: CGSize(width: 54, height: 54)) {
                     runner.position = CGPoint(x: 0, y: 58)
@@ -461,29 +469,45 @@ extension RunScene {
             }
             onTap(node) { [unowned self] in
                 if isOpen {
-                    self.showStageCard(i)
+                    self.showStageCard(base + i)
                 } else {
-                    self.popText("Clear stage \(i) first", size: 20, color: .white, at: spot, rise: 30, life: 1, parent: self.overlay)
+                    self.popText(i == 0 ? "Finish the last world first" : "Clear stage \(i) first", size: 20, color: .white, at: spot, rise: 30, life: 1, parent: self.overlay)
                 }
             }
         }
 
         // Top bar.
         backButton { [unowned self] in self.showTitle() }
-        let title = label("Notebook Meadow", size: 26)
+        let title = label(world.name, size: 26)
         title.position = CGPoint(x: w / 2, y: h - safeTop - 30)
         title.zPosition = 5
         overlay.addChild(title)
-        let starTotal = label("★ \(progress.totalStars)/\(Stage.meadow.count * 3)", size: 17, color: Palette.stitchGold)
+        let worldStars = (base..<(base + world.stages.count)).reduce(0) { $0 + progress.stars(forStage: $1) }
+        let starTotal = label("★ \(worldStars)/\(world.stages.count * 3)", size: 17, color: Palette.stitchGold)
         starTotal.anchorPoint = CGPoint(x: 1, y: 0.5)
         starTotal.position = CGPoint(x: w - 16, y: h - safeTop - 30)
         starTotal.zPosition = 5
         overlay.addChild(starTotal)
-        if progress.stars(forStage: Stage.meadow.count - 1) > 0 {
-            let next = label("Cardboard Canyon: coming soon!", size: 14, style: .body)
-            next.position = CGPoint(x: w / 2, y: h - safeTop - 62)
-            next.zPosition = 5
-            overlay.addChild(next)
+        let subtitle = label(worldOpen ? world.blurb : "Clear \(World.all[max(0, worldIndex - 1)].name) to open", size: 14,
+                             style: .body)
+        subtitle.position = CGPoint(x: w / 2, y: h - safeTop - 58)
+        subtitle.zPosition = 5
+        overlay.addChild(subtitle)
+
+        // Arrows flip between worlds.
+        for (direction, target) in [(-1, worldIndex - 1), (1, worldIndex + 1)] where World.all.indices.contains(target) {
+            let arrow = roundButton(icon: "menu-back", fallback: direction < 0 ? "<" : ">", size: 46, caption: nil)
+            if direction > 0 { arrow.xScale = -1 }
+            arrow.position = CGPoint(x: direction < 0 ? 30 : w - 30, y: h * 0.5)
+            arrow.zPosition = 6
+            overlay.addChild(arrow)
+            onTap(arrow) { [unowned self] in self.showMap(world: target) }
+        }
+        if !worldOpen {
+            let shade = SKSpriteNode(color: UIColor(white: 0, alpha: 0.35), size: size)
+            shade.anchorPoint = .zero
+            shade.zPosition = 1.5
+            overlay.addChild(shade)
         }
 
         // Bottom: Endless.
@@ -504,10 +528,10 @@ extension RunScene {
     // MARK: Stage card
 
     func showStageCard(_ index: Int) {
-        let stage = Stage.meadow[index]
+        let stage = Stage.all[index]
         let w = size.width
         let h = size.height
-        _ = dimBackground { [unowned self] in self.showMap() }
+        _ = dimBackground { [unowned self] in self.showMap(world: World.index(ofStage: index)) }
         let cardW = min(w - 32, 350)
         let cardH: CGFloat = 470
         let card = paperPanel(width: cardW, height: cardH)
@@ -522,7 +546,7 @@ extension RunScene {
         }
         let top = cardH / 2
 
-        place(label("Stage \(stage.number)", size: 15, color: Palette.stormDark, style: .body), top - 36)
+        place(label("\(World.all[World.index(ofStage: index)].name) · Stage \(stage.number)", size: 15, color: Palette.stormDark, style: .body), top - 36)
         place(label(stage.name, size: 27, color: Palette.stitchGold), top - 66)
 
         // The three stars.
@@ -834,7 +858,10 @@ extension RunScene {
                     y: caseFrame.maxY - y / artSize.height * caseFrame.height)
         }
         let unit = caseFrame.width / artSize.width
-        let slotW = (insideRight - insideLeft) / 3 * unit
+        // Three to a shelf, or four once the cast outgrows twelve.
+        let itemCount = tab == 0 ? Monster.roster.count : Trophy.allCases.count
+        let perShelfCount = max(3, (itemCount + 3) / 4)
+        let slotW = (insideRight - insideLeft) / CGFloat(perShelfCount) * unit
         let progress = Progress.shared
 
         // A paper strip along the bottom tells you about whatever you tap.
@@ -1136,7 +1163,7 @@ extension RunScene {
         var starLabels = ["Finish", "No hits", "Stitched"]
         switch mode {
         case .stage(let index):
-            let stage = Stage.meadow[index]
+            let stage = Stage.all[index]
             if finished {
                 title = "\(stage.name) stitched!"
                 subtitle = stage.beat
@@ -1286,12 +1313,17 @@ extension RunScene {
         var buttons: [(String, () -> Void)] = []
         switch mode {
         case .stage(let index):
-            if finished && index + 1 < Stage.meadow.count {
-                buttons.append(("Next", { [unowned self] in self.showMap(); self.showStageCard(index + 1) }))
+            if finished && index + 1 < Stage.all.count {
+                buttons.append(("Next", { [unowned self] in
+                    self.showMap(world: World.index(ofStage: index + 1))
+                    self.showStageCard(index + 1)
+                }))
             } else {
                 buttons.append(("Retry", { [unowned self] in self.startRun(.stage(index)) }))
             }
-            buttons.append(("Map", { [unowned self] in self.showMap() }))
+            // Clearing a world's last stage takes you straight to the next world's map.
+            let mapTarget = World.index(ofStage: finished ? min(index + 1, Stage.all.count - 1) : index)
+            buttons.append(("Map", { [unowned self] in self.showMap(world: mapTarget) }))
         case .daily(let storm):
             let result = stats
             let earned = stars

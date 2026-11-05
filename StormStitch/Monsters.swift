@@ -17,6 +17,9 @@ struct Monster {
         case counterstorm  // Thundercap: the storm falls back faster
         case feast         // Gobbler: spools count double during a streak of 10 or more
         case bounce        // Comet: higher, longer jumps
+        case barge         // Corrugo: crashes straight through boxes
+        case charge        // Squidge: gadgets charge twice as fast
+        case frost         // Crumple: starts every run with a Stitch Shield
     }
 
     /// How a monster joins the cast.
@@ -32,7 +35,10 @@ struct Monster {
         var text: String {
             switch self {
             case .start: return "Ready from the start"
-            case .stage(let n): return "Clear stage \(n)"
+            case .stage(let n):
+                let world = World.all[World.index(ofStage: n - 1)]
+                let local = (n - 1) % World.stagesPerWorld + 1
+                return world.id == "meadow" ? "Clear stage \(n)" : "Clear \(world.name) \(local)"
             case .lifetimeSpools(let n): return "Collect \(n.formatted()) spools in all"
             case .stars(let n): return "Earn \(n) stars"
             case .dailies(let n): return "Play \(n) Daily Storms"
@@ -73,7 +79,13 @@ struct Monster {
         Monster(id: "gobbler", name: "Gobbler", passive: "Streaks count double",
                 ability: .feast, unlock: .holiday(.harvest), runHeight: 120, frontHeight: 124, holiday: .harvest),
         Monster(id: "comet", name: "Comet", passive: "Higher, longer jumps",
-                ability: .bounce, unlock: .holiday(.snow), runHeight: 122, frontHeight: 124, holiday: .snow)
+                ability: .bounce, unlock: .holiday(.snow), runHeight: 122, frontHeight: 124, holiday: .snow),
+        Monster(id: "corrugo", name: "Corrugo", passive: "Crashes through boxes",
+                ability: .barge, unlock: .stage(20), runHeight: 122, frontHeight: 124),
+        Monster(id: "squidge", name: "Squidge", passive: "Gadgets charge 2x faster",
+                ability: .charge, unlock: .stage(30), runHeight: 116, frontHeight: 118),
+        Monster(id: "crumple", name: "Crumple", passive: "Starts with a shield",
+                ability: .frost, unlock: .stage(39), runHeight: 126, frontHeight: 128)
     ]
 
     static func named(_ id: String) -> Monster {

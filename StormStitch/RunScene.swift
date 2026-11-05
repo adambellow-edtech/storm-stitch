@@ -257,7 +257,9 @@ final class RunScene: SKScene {
     var gustWarned = false
     var gustDirection = 1
     let nightShade = SKSpriteNode()
-    var theme: Holiday?
+    var theme: Theme?
+    /// The world the stage map last showed, so menus return to it.
+    var mapWorld: Int?
     var themeApplied = false
     var holidayEmitters: [SKEmitterNode] = []
     let rivalSprite = SKSpriteNode()
@@ -623,7 +625,14 @@ final class RunScene: SKScene {
         }
 
         // Illustrated backdrop replaces the code-drawn sky, sun, clouds and hills when present.
-        if let grayImage = artImage("backdrop-gray"), let colorImage = artImage("backdrop-color") {
+        let themedGray = theme?.backdropGray.flatMap { artImage($0) }
+        let themedColor = theme?.backdropColor.flatMap { artImage($0) }
+        if let grayImage = themedGray ?? artImage("backdrop-gray"), let colorImage = themedColor ?? artImage("backdrop-color") {
+            if let gray = backdropGray, let color = backdropColor {
+                // A different world may be showing: swap in its sky.
+                gray.texture = SKTexture(image: grayImage)
+                color.texture = SKTexture(image: colorImage)
+            }
             if backdropGray == nil {
                 let gray = SKSpriteNode(texture: SKTexture(image: grayImage))
                 gray.zPosition = -190
@@ -659,7 +668,8 @@ final class RunScene: SKScene {
         let groundRect = CGSize(width: wide, height: horizonY + h * 0.4)
         let shaderRect = CGRect(x: w / 2 - wide / 2, y: -h * 0.4, width: wide, height: horizonY + h * 0.4)
         texturedGray = PaperGround.make(colored: false, rect: shaderRect, horizonY: horizonY, unitK: unitK,
-                                        camHeight: camHeight, camBack: camBack, centerX: w / 2)
+                                        camHeight: camHeight, camBack: camBack, centerX: w / 2,
+                                        roadName: theme?.roadGray, groundName: theme?.groundGray)
         texturedColor = PaperGround.make(colored: true, rect: shaderRect, horizonY: horizonY, unitK: unitK,
                                          camHeight: camHeight, camBack: camBack, centerX: w / 2,
                                          roadName: theme?.roadColor, groundName: theme?.groundColor)
@@ -941,7 +951,7 @@ final class RunScene: SKScene {
         switch mode {
         case .stage(let index):
             guard result.finished else { return 0 }
-            return 1 + (Stage.meadow[index].challenge.met(by: result) ? 1 : 0) + (result.stitched ? 1 : 0)
+            return 1 + (Stage.all[index].challenge.met(by: result) ? 1 : 0) + (result.stitched ? 1 : 0)
         case .race(let holiday):
             guard result.finished, result.spools > holiday.rivalTarget else { return 0 }
             return 1 + (result.hits == 0 ? 1 : 0) + (result.stitched ? 1 : 0)
@@ -1269,7 +1279,10 @@ final class RunScene: SKScene {
                 anchorY = 12.0 / 70.0
             }
         case .overhead:
-            if let picture = illustrated("hazard-ruler", width: 105) {
+            if let name = theme?.overheadHazard, let picture = illustrated(name, width: 105) {
+                hazardArt = picture
+                anchorY = 0.0
+            } else if let picture = illustrated("hazard-ruler", width: 105) {
                 hazardArt = picture
                 anchorY = 0.0
             } else {
@@ -1367,9 +1380,11 @@ final class RunScene: SKScene {
             grayName = "flower-gray"
             width = 44
         }
-        if kind == .tree, let theme,
-           let themedColor = illustrated(theme.treeColor, width: width),
-           let themedGray = illustrated(theme.treeGray, width: width) {
+        let themedNames: (String?, String?) = kind == .tree ? (theme?.treeColor, theme?.treeGray)
+            : kind == .bush ? (theme?.bushColor, theme?.bushGray) : (nil, nil)
+        if let colorTheme = themedNames.0, let grayTheme = themedNames.1,
+           let themedColor = illustrated(colorTheme, width: width),
+           let themedGray = illustrated(grayTheme, width: width) {
             return colored ? Art(texture: themedColor.texture, size: themedGray.size) : themedGray
         }
         guard let color = illustrated(colorName, width: width),
@@ -1501,7 +1516,7 @@ final class RunScene: SKScene {
                 case .crate: hit = playerY < 1.4
                 }
                 if flying { hit = false }
-                if hit, hazard == .crate, monster.ability == .snip, slideTimer > 0 {
+                if hit, hazard == .crate, (monster.ability == .snip && slideTimer > 0) || monster.ability == .barge {
                     thing.resolved = true
                     snipThrough(thing)
                     continue
@@ -1525,7 +1540,7 @@ final class RunScene: SKScene {
         timeScale = 0.4
         spools += 3
         closeCalls += 1
-        gadgetCharge += 3
+        gadgetCharge += monster.ability == .charge ? 6 : 3
         updateGadgetRing()
         meter = min(1, meter + config.meterPerSpool * 2.5)
         popText("Close call! +3", size: 24, color: .white, at: playerScreenPoint(offsetY: 120), rise: 50, life: 0.9)
@@ -1538,7 +1553,7 @@ final class RunScene: SKScene {
         // Gobbler's feast: during a streak of 10 or more, every spool counts double.
         let worth = monster.ability == .feast && streak >= 10 ? 2 : 1
         spools += worth
-        gadgetCharge += worth
+        gadgetCharge += monster.ability == .charge ? worth * 2 : worth
         updateGadgetRing()
         bestStreak = max(bestStreak, streak)
         streakTimer = 1.4

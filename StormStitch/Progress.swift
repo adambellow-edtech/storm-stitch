@@ -2,8 +2,8 @@ import Foundation
 
 /// Everything the game remembers between launches, saved as JSON in UserDefaults.
 struct SaveData: Codable {
-    var stageStars: [Int] = Array(repeating: 0, count: Stage.meadow.count)
-    var stageBest: [Int] = Array(repeating: 0, count: Stage.meadow.count)
+    var stageStars: [Int] = Array(repeating: 0, count: Stage.all.count)
+    var stageBest: [Int] = Array(repeating: 0, count: Stage.all.count)
     var lifetimeSpools = 0
     var bestStreak = 0
     var bestEndlessScore = 0
@@ -28,12 +28,14 @@ enum UnlockEvent {
     case monster(Monster)
     case gadget(Gadget)
     case trophy(Trophy)
+    case world(String)
 
     var title: String {
         switch self {
         case .monster(let m): return "New monster: \(m.name)!"
         case .gadget(let g): return "New gadget: \(g.name)!"
         case .trophy(let t): return "Trophy: \(t.name)!"
+        case .world(let name): return "New world: \(name)!"
         }
     }
 
@@ -42,6 +44,7 @@ enum UnlockEvent {
         case .monster(let m): return m.passive
         case .gadget(let g): return g.blurb
         case .trophy(let t): return t.detail
+        case .world: return "Open it from the map"
         }
     }
 
@@ -50,6 +53,7 @@ enum UnlockEvent {
         case .monster(let m): return "\(m.id)-front"
         case .gadget(let g): return g.icon
         case .trophy: return "menu-trophy"
+        case .world: return "menu-map"
         }
     }
 }
@@ -65,7 +69,7 @@ final class Progress {
            let saved = try? JSONDecoder().decode(SaveData.self, from: raw) {
             data = saved
             // Older saves may have fewer stages than the game now has.
-            let count = Stage.meadow.count
+            let count = Stage.all.count
             if data.stageStars.count < count {
                 data.stageStars += Array(repeating: 0, count: count - data.stageStars.count)
             }
@@ -103,7 +107,7 @@ final class Progress {
     }
 
     var nextStageIndex: Int {
-        data.stageStars.firstIndex { $0 == 0 } ?? (Stage.meadow.count - 1)
+        data.stageStars.firstIndex { $0 == 0 } ?? (Stage.all.count - 1)
     }
 
     func isUnlocked(_ monster: Monster) -> Bool {
@@ -152,11 +156,16 @@ final class Progress {
 
         switch mode {
         case .stage(let index):
+            let firstClear = index < data.stageStars.count && data.stageStars[index] == 0 && stats.finished
+            let lastInWorld = (index + 1) % World.stagesPerWorld == 0
+            if firstClear, lastInWorld, index + 1 < Stage.all.count {
+                events.append(.world(World.all[World.index(ofStage: index + 1)].name))
+            }
             if index < data.stageStars.count {
                 data.stageStars[index] = max(data.stageStars[index], stars)
                 data.stageBest[index] = max(data.stageBest[index], stats.spools)
             }
-            if stats.finished, index < Stage.meadow.count, let gadget = Stage.meadow[index].gadget,
+            if stats.finished, index < Stage.all.count, let gadget = Stage.all[index].gadget,
                !data.unlockedGadgets.contains(gadget.rawValue) {
                 data.unlockedGadgets.append(gadget.rawValue)
                 // Equip the first gadget automatically so players notice it.
@@ -207,8 +216,8 @@ final class Progress {
         award(.marathon, isEndless && stats.distance >= 2000)
         award(.dailyDevotee, dailiesPlayed >= 7)
         award(.timeLord, data.rewindsUsed >= 10)
-        award(.fullCast, Monster.roster.filter { $0.holiday == nil }.allSatisfy { data.unlockedMonsters.contains($0.id) })
-        award(.starCollector, totalStars >= Stage.meadow.count * 3)
+        award(.fullCast, Monster.roster.filter { $0.holiday == nil }.prefix(8).allSatisfy { data.unlockedMonsters.contains($0.id) })
+        award(.starCollector, totalStars >= 30)
         award(.stormChaser, isEndless && stats.elapsed >= 180)
         award(.holidaySpirit, wonRace)
 

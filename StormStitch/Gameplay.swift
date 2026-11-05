@@ -34,7 +34,7 @@ extension RunScene {
     func makeConfig(for mode: RunMode) -> RunConfig {
         switch mode {
         case .stage(let index):
-            return Stage.meadow[max(0, min(index, Stage.meadow.count - 1))].config
+            return World.config(forStage: index)
         case .daily(let storm), .challenge(let storm, _, _):
             return storm.config
         case .race(let holiday):
@@ -68,11 +68,14 @@ extension RunScene {
         }
         currentPose = ""
 
-        var raceHoliday: Holiday?
-        if case .race(let holiday) = newMode { raceHoliday = holiday }
-        applyTheme(raceHoliday ?? currentHoliday())
+        applyTheme(themeFor(newMode))
 
         resetWorld()
+        if monster.ability == .frost {
+            // Crumple starts every run behind a Stitch Shield.
+            shieldActive = true
+            shieldRing.isHidden = false
+        }
         state = .running
         eyeGloat = false
         eyeDefeated = false
@@ -96,7 +99,9 @@ extension RunScene {
         // Opening banner.
         let banner: String
         switch newMode {
-        case .stage(let index): banner = "Stage \(index + 1): \(Stage.meadow[index].name)"
+        case .stage(let index):
+            let world = World.all[World.index(ofStage: index)]
+            banner = "\(world.id == "meadow" ? "Stage" : world.name) \(Stage.all[index].number): \(Stage.all[index].name)"
         case .daily(let storm): banner = "\(storm.rule.emoji) \(storm.rule.name)"
         case .challenge(let storm, let target, let from): banner = "Beat \(from): \(target.formatted()) \(storm.rule.emoji)"
         case .race(let holiday): banner = "\(holiday.raceName): beat \(holiday.rivalName)!"
@@ -737,17 +742,33 @@ extension RunScene {
         }
     }
 
-    /// Switches the world's look for a holiday (or back to normal).
-    func applyTheme(_ holiday: Holiday?) {
-        let changed = holiday != theme || !themeApplied
-        theme = holiday
+    /// The look for a run: a later world wears its own art; Notebook Meadow, Endless and the Daily Storm
+    /// wear the holiday look when one is on. Holiday leaves or snow fall over every world.
+    func themeFor(_ mode: RunMode?) -> Theme? {
+        var raceHoliday: Holiday?
+        if case .race(let holiday) = mode { raceHoliday = holiday }
+        let holiday = raceHoliday ?? currentHoliday()
+        if case .stage(let index) = mode, var worldTheme = World.all[World.index(ofStage: index)].theme {
+            if let holiday {
+                worldTheme.particles = holiday.particles
+                worldTheme.holiday = holiday
+            }
+            return worldTheme
+        }
+        return holiday?.theme
+    }
+
+    /// Switches the world's look (or back to Notebook Meadow's).
+    func applyTheme(_ newTheme: Theme?) {
+        let changed = newTheme != theme || !themeApplied
+        theme = newTheme
         themeApplied = true
         guard changed else { return }
         layoutScene()
         for emitter in holidayEmitters { emitter.removeFromParent() }
         holidayEmitters.removeAll()
-        guard let holiday else { return }
-        for (i, name) in holiday.particles.enumerated() {
+        guard let holiday = newTheme?.holiday, let particles = newTheme?.particles else { return }
+        for (i, name) in particles.enumerated() {
             let texture: SKTexture
             if let image = artImage(name) {
                 texture = SKTexture(image: image)
@@ -770,7 +791,8 @@ extension RunScene {
             emitter.particleRotationRange = .pi * 2
             emitter.particleRotationSpeed = holiday == .harvest ? 1.5 : 0.6
             emitter.particleAlpha = 0.95
-            emitter.zPosition = 650
+            // Above the menus too, so leaves and snow drift over the title and map screens.
+            emitter.zPosition = 1150
             emitter.advanceSimulationTime(8)
             addChild(emitter)
             holidayEmitters.append(emitter)

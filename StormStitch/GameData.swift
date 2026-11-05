@@ -271,7 +271,8 @@ struct DailyStorm: Equatable {
         let rules = StormRule.allCases
         // Every 7th day is calm so new players get an easy one each week.
         rule = number % 7 == 0 ? .calm : rules[Int(rng.next() % UInt64(rules.count - 1)) + 1]
-        let cast = Monster.roster.filter { $0.holiday == nil }
+        // The original eight: the Daily Storm's runner must look the same on every phone and app version.
+        let cast = Array(Monster.roster.filter { $0.holiday == nil }.prefix(8))
         monsterID = cast[Int(rng.next() % UInt64(cast.count))].id
     }
 
@@ -345,7 +346,7 @@ enum Trophy: String, CaseIterable, Codable {
         case .dailyDevotee: return "Play 7 Daily Storms"
         case .timeLord: return "Use the Time Machine 10 times"
         case .fullCast: return "Unlock all 8 monsters"
-        case .starCollector: return "Earn all 30 stars"
+        case .starCollector: return "Earn 30 stars"
         case .stormChaser: return "Survive 3 minutes in Endless"
         case .holidaySpirit: return "Win a holiday race"
         }
