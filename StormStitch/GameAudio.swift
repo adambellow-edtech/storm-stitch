@@ -41,6 +41,8 @@ final class GameAudio {
     private var chimes: [AVAudioPCMBuffer] = []
     private let synth: MusicSynth
     private var started = false
+    /// True while the engine is starting in the background; nothing else tries to start it meanwhile.
+    private var engineStarting = false
 
     private init() {
         format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
@@ -51,9 +53,6 @@ final class GameAudio {
         guard !started else { return }
         started = true
 
-        // Ambient respects the silent switch and mixes with other audio, like most games.
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
 
         for _ in 0..<8 {
             let player = AVAudioPlayerNode()
@@ -82,7 +81,17 @@ final class GameAudio {
 
         buildSounds()
         engine.prepare()
-        try? engine.start()
+
+        // Setting up the audio session can block for a moment, so it and the engine start run off the
+        // main thread. Ambient respects the silent switch and mixes with other audio, like most games.
+        engineStarting = true
+        let engine = self.engine
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+            try? AVAudioSession.sharedInstance().setActive(true)
+            try? engine.start()
+            DispatchQueue.main.async { self?.engineStarting = false }
+        }
 
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tickSong() }
         RunLoop.main.add(timer, forMode: .common)
@@ -113,7 +122,7 @@ final class GameAudio {
             return
         }
         let (base, drive) = pair
-        if !engine.isRunning { try? engine.start() }
+        if !engine.isRunning && !engineStarting { try? engine.start() }
         guard engine.isRunning else { return }
         songBase.stop()
         songDrive.stop()
@@ -229,7 +238,7 @@ final class GameAudio {
 
     private func schedule(_ buffer: AVAudioPCMBuffer, volume: Float) {
         guard !players.isEmpty else { return }
-        if !engine.isRunning { try? engine.start() }
+        if !engine.isRunning && !engineStarting { try? engine.start() }
         guard engine.isRunning else { return }
         let player = players[nextPlayer]
         nextPlayer = (nextPlayer + 1) % players.count
