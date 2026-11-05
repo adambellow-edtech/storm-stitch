@@ -746,9 +746,9 @@ extension RunScene {
     /// wear the holiday look when one is on. Holiday leaves or snow fall over every world.
     func themeFor(_ mode: RunMode?) -> Theme? {
         var raceHoliday: Holiday?
-        if case .race(let holiday) = mode { raceHoliday = holiday }
+        if case .race(let holiday)? = mode { raceHoliday = holiday }
         let holiday = raceHoliday ?? currentHoliday()
-        if case .stage(let index) = mode, var worldTheme = World.all[World.index(ofStage: index)].theme {
+        if case .stage(let index)? = mode, var worldTheme = World.all[World.index(ofStage: index)].theme {
             if let holiday {
                 worldTheme.particles = holiday.particles
                 worldTheme.holiday = holiday
