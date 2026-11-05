@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beat my Storm Stitch score</title>
+  <meta name="description" content="A friend ran today's Daily Storm in Storm Stitch and dared you to beat their score.">
+  <meta property="og:title" content="Beat my Storm Stitch score">
+  <meta property="og:description" content="A friend ran today's Daily Storm in Storm Stitch and dared you to beat their score.">
+  <meta property="og:image" content="https://stormstitchgame.com/assets/og-card.jpg">
+  <meta name="theme-color" content="#7cc4ef">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="../assets/favicon.png">
+  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="../"><img src="../assets/icon.png" alt="">Storm Stitch</a>
+      <nav>
+        <a href="../">Home</a>
+        <a href="../support/">Support</a>
+        <a href="../privacy/">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main class="doc">
+    <div class="wrap">
+      <article class="paper stitched center" style="max-width:560px;margin:0 auto">
+        <img src="../assets/icon.png" alt="Storm Stitch app icon" style="width:120px;border-radius:27px;margin:6px auto 18px;box-shadow:0 14px 30px rgba(43,35,64,0.3)">
+        <h1 id="headline">You've been challenged!</h1>
+        <p id="detail">A friend ran a Daily Storm and sent you their score.</p>
+        <p><a class="btn" id="open" href="#">Open in Storm Stitch</a></p>
+        <p><a class="btn dark js-store" href="../" aria-disabled="true"><span>Get Storm Stitch<span class="badge-soon">coming soon to the App Store</span></span></a></p>
+        <p class="meta">You'll run the same course they did. Beat their score, then send it back.</p>
+      </article>
+    </div>
+  </main>
+  <footer>
+    <div class="wrap">
+      <span>© 2026 Adam Bellow</span>
+      <a href="../support/">Support</a>
+      <a href="../privacy/">Privacy Policy</a>
+      <a href="mailto:contact@stormstitchgame.com">contact@stormstitchgame.com</a>
+    </div>
+  </footer>
+  <script src="../assets/site.js"></script>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var d = parseInt(q.get("d"), 10), t = parseInt(q.get("t"), 10);
+      var n = (q.get("n") || "A friend").slice(0, 20);
+      var open = document.getElementById("open");
+      if (!(d > 0) || !(t >= 0)) { open.style.display = "none"; return; }
+      document.getElementById("headline").textContent = n + " challenges you!";
+      document.getElementById("detail").textContent =
+        "Daily Storm #" + d + ". Score to beat: " + t.toLocaleString("en-US") + ".";
+      var app = "stormstitch://challenge?d=" + d + "&t=" + t + "&n=" + encodeURIComponent(n);
+      open.href = app;
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) { location.href = app; }
+    })();
+  </script>
+</body>
+</html>
