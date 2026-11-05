@@ -770,19 +770,35 @@ extension RunScene {
         for emitter in holidayEmitters { emitter.removeFromParent() }
         holidayEmitters.removeAll()
         guard let holiday = newTheme?.holiday, let particles = newTheme?.particles else { return }
+        let harvest = holiday == .harvest
+        // The total amount stays the same however many kinds of piece there are.
+        let totalRate: CGFloat = harvest ? 4.5 : 11
         for (i, name) in particles.enumerated() {
             let texture: SKTexture
-            if let image = artImage(name) {
+            // Size each piece by its picture's shape so nothing is squashed.
+            let base: CGFloat = harvest ? 34 : 22
+            var pieceSize = CGSize(width: base, height: base)
+            if let image = artImage(name), image.size.height > 0 {
                 texture = SKTexture(image: image)
+                let aspect = image.size.width / image.size.height
+                pieceSize = aspect >= 1 ? CGSize(width: base, height: base / aspect) : CGSize(width: base * aspect, height: base)
             } else {
-                texture = holiday == .harvest ? art.leaf(variant: i).texture : art.puff.texture
+                texture = harvest ? art.leaf(variant: i).texture : art.puff.texture
             }
             let emitter = SKEmitterNode()
             emitter.particleTexture = texture
-            emitter.particleBirthRate = holiday == .harvest ? 1.6 : 6
+            emitter.particleBirthRate = totalRate / CGFloat(max(1, particles.count))
             emitter.particleLifetime = 9
-            emitter.particleSize = holiday == .harvest ? CGSize(width: 26, height: 26) : CGSize(width: 18, height: 18)
+            emitter.particleSize = pieceSize
             emitter.particleScaleRange = 0.5
+            // Paper flutters: each piece sways side to side as it falls.
+            let sway: CGFloat = harvest ? 26 : 14
+            let swayTime = harvest ? 1.1 : 1.5
+            let half = SKAction.moveBy(x: sway, y: 0, duration: swayTime)
+            half.timingMode = .easeInEaseOut
+            let back = SKAction.moveBy(x: -sway, y: 0, duration: swayTime)
+            back.timingMode = .easeInEaseOut
+            emitter.particleAction = .repeatForever(.sequence([half, back]))
             emitter.particlePositionRange = CGVector(dx: size.width * 1.3, dy: 0)
             emitter.position = CGPoint(x: size.width / 2, y: size.height + 30)
             emitter.emissionAngle = -.pi / 2

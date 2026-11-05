@@ -59,7 +59,11 @@ enum Holiday: String, CaseIterable, Codable {
     var treeGray: String { self == .harvest ? "tree-gray" : "pine-gray" }
     var groundColor: String { self == .harvest ? "ground-autumn" : "ground-snow" }
     var roadColor: String? { self == .harvest ? nil : "road-snow" }
-    var particles: [String] { self == .harvest ? ["leaf-1", "leaf-2", "leaf-3"] : ["snowflake-1", "snowflake-2"] }
+    /// Cut-paper pieces that drift down the screen: five leaves, or paper snowflakes, punched dots, a scrap and a star.
+    var particles: [String] {
+        self == .harvest ? ["leaf-1", "leaf-2", "leaf-3", "leaf-4", "leaf-5"]
+                         : ["snow-1", "snow-2", "snow-3", "snow-4", "snow-5", "snow-6"]
+    }
 
     /// The event running on a given day, if any.
     static func active(on date: Date = Date()) -> Holiday? {
