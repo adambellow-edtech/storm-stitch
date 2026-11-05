@@ -87,6 +87,11 @@ p { margin: 0 0 1em; }
 .hero h1 { color: #fff; text-shadow: 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink), 0 6px 0 var(--ink); }
 .hero .lede { font-size: 20px; color: var(--ink); background: var(--paper); padding: 18px 22px; border-radius: 18px; box-shadow: 0 5px 0 var(--paper-edge); }
 .hero .ctas { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px; }
+/* New art */
+.hero-banner { grid-column: 1 / -1; width: 100%; aspect-ratio: 21 / 9; object-fit: cover; border-radius: var(--radius); box-shadow: 0 18px 40px rgba(43,35,64,0.25); margin-bottom: 8px; }
+.section-art { width: 100%; border-radius: 14px; margin-bottom: 14px; }
+.wide-art { width: 100%; border-radius: var(--radius); box-shadow: 0 18px 40px rgba(43,35,64,0.2); margin-top: 22px; }
+.features.two-up { grid-template-columns: 1fr 1fr; }
 .phone {
   justify-self: center; width: min(340px, 80vw); aspect-ratio: 1170 / 2078; border-radius: 42px; overflow: hidden;
   border: 10px solid var(--ink); box-shadow: 0 30px 60px rgba(43,35,64,0.35); transform: rotate(2deg); background: var(--paper);
@@ -152,7 +157,8 @@ footer a { color: var(--ink); }
   .hero .lede { font-size: 17px; }
   .top nav a { font-size: 14px; }
   .brand { font-size: 19px; }
-  .features { grid-template-columns: 1fr; }
+  .features, .features.two-up { grid-template-columns: 1fr; }
+  .phone { display: none; }
   .cast { grid-template-columns: repeat(2, 1fr); }
   .top nav { gap: 12px; }
   .top nav a.hide-sm { display: none; }

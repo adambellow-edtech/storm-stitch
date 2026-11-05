@@ -484,10 +484,18 @@ final class PaperArt {
     }
 
     var shadow: Art {
-        art("fx.shadow", size: CGSize(width: 100, height: 32)) { ctx in
-            ctx.setFillColor(UIColor(white: 0, alpha: 0.24).cgColor)
-            ctx.addPath(PaperArt.ellipse(50, 16, 44, 12))
-            ctx.fillPath()
+        // A soft, slightly lumpy pool: a body blob plus two foot blobs, all feathered to nothing at the edge.
+        art("fx.shadow.soft", size: CGSize(width: 100, height: 32)) { ctx in
+            let colors = [UIColor(hex: 0x1E1830, alpha: 0.34).cgColor, UIColor(hex: 0x1E1830, alpha: 0.18).cgColor,
+                          UIColor(hex: 0x1E1830, alpha: 0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors,
+                                            locations: [0, 0.5, 1]) else { return }
+            ctx.scaleBy(x: 1, y: 0.34)
+            for (x, y, r) in [(50.0, 47.0, 46.0), (33.0, 50.0, 22.0), (67.0, 44.0, 22.0)] {
+                let center = CGPoint(x: x, y: y)
+                ctx.drawRadialGradient(gradient, startCenter: center, startRadius: 0,
+                                       endCenter: center, endRadius: CGFloat(r), options: [])
+            }
         }
     }
 

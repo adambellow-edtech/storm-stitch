@@ -2101,7 +2101,12 @@ final class RunScene: SKScene {
             let feet = screenPoint(ofWorld: playerShadow.position).y
             let body = playerNode.calculateAccumulatedFrame().height
             let cap = feet + body * 0.3
-            visible = min(visible, cap + 8 - stormTopAbove)
+            let capped = cap + 8 - stormTopAbove
+            if visible > capped {
+                // Meet halfway: the wall still climbs over the runner's legs, and its eyes never sink off screen.
+                let eyesInView = h * (0.07 + closeness * 0.06)
+                visible = max(eyesInView, (visible + capped) / 2)
+            }
         }
         stormBack.position.y = visible + 18
         stormFront.position.y = visible + CGFloat(sin(clock * 3.1) * 5)
@@ -2265,6 +2270,32 @@ final class RunScene: SKScene {
         brambleSprite.xScale = 1
         brambleSprite.texture = entry.texture
         brambleSprite.size = CGSize(width: height * entry.size.width / entry.size.height, height: height)
+        brambleSprite.childNode(withName: "dizzyEyes")?.removeFromParent()
+        if name == "bramble-lose" { addDizzyEyes(imageSize: entry.size) }
+    }
+
+    /// Bramble's spiral eyes spin while he sits dazed after the storm wins.
+    func addDizzyEyes(imageSize: CGSize) {
+        // Eye centers and size in the bramble-lose painting (pixels, y from the top).
+        let eyes: [(name: String, x: CGFloat, y: CGFloat, spin: CGFloat)] = [
+            ("bramble-dizzy-eye-l", 170.7, 312.3, -1), ("bramble-dizzy-eye-r", 262.0, 313.8, 1)
+        ]
+        let diameter: CGFloat = 62
+        let group = SKNode()
+        group.name = "dizzyEyes"
+        group.zPosition = 0.1
+        let w = brambleSprite.size.width, h = brambleSprite.size.height
+        let anchor = brambleSprite.anchorPoint
+        for eye in eyes {
+            guard let image = artImage(eye.name) else { return }
+            let sprite = SKSpriteNode(texture: SKTexture(image: image),
+                                      size: CGSize(width: diameter / imageSize.width * w, height: diameter / imageSize.height * h))
+            sprite.position = CGPoint(x: (eye.x / imageSize.width - anchor.x) * w,
+                                      y: ((imageSize.height - eye.y) / imageSize.height - anchor.y) * h)
+            sprite.run(.repeatForever(.rotate(byAngle: eye.spin * 2 * .pi, duration: 1.1)))
+            group.addChild(sprite)
+        }
+        brambleSprite.addChild(group)
     }
 
     // MARK: Pause

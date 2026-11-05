@@ -6,3 +6,4 @@ xcuserdata/
 *.xcuserstate
 StormStitch/Info.plist
 StormStitch/StormStitch.entitlements
+tools/appstore/out/appstore-*.png

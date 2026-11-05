@@ -147,12 +147,16 @@ def promo_banner(size, name):
 def caption_frame(shot, title, sub, size=(1320, 2868), index=0):
     """A store screenshot: caption on a paper strip, the real screen in a rounded frame below."""
     w, h = size
-    bg_colors = [SKY, (108, 198, 111), (178, 132, 230), STORM, (74, 69, 96), (244, 184, 28)]
-    base = Image.new("RGBA", size, bg_colors[index % len(bg_colors)] + (255,))
+    backgrounds = ["sky-blue", "leaf-green", "stormy-purple"]
+    bg_path = os.path.join(ROOT, "tools", "appstore", "source",
+                           f"A4-screenshot-background-{backgrounds[index % len(backgrounds)]}.png")
+    if os.path.exists(bg_path):
+        base = cover(Image.open(bg_path).convert("RGBA"), size)
+    else:
+        bg_colors = [SKY, (108, 198, 111), STORM]
+        base = Image.new("RGBA", size, bg_colors[index % len(bg_colors)] + (255,))
     # Soft paper clouds.
     d = ImageDraw.Draw(base)
-    for cx, cy, r in ((0.1, 0.035, 0.16), (0.92, 0.05, 0.18)):
-        d.ellipse([w * (cx - r), h * cy - w * r * 0.45, w * (cx + r), h * cy + w * r * 0.45], fill=(255, 255, 255, 50))
     title_font = font("Fredoka-Bold.ttf", 118)
     sub_font = font("NunitoSans-ExtraBold.ttf", 46)
     outlined_text(d, (w // 2, 230), title, title_font, (255, 255, 255), anchor="mm", stroke=10)
