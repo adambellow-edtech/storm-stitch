@@ -763,6 +763,7 @@ extension RunScene {
         let changed = newTheme != theme || !themeApplied
         theme = newTheme
         themeApplied = true
+        audio.setMusicTheme(newTheme?.holiday)
         guard changed else { return }
         layoutScene()
         for emitter in holidayEmitters { emitter.removeFromParent() }

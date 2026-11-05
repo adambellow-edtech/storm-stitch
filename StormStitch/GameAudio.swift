@@ -80,6 +80,11 @@ final class GameAudio {
     }
 
     /// 0 = calm, 1 = full energy. Adds hats and the theremin lead as it rises.
+    /// Switches the song to its holiday version (or back).
+    func setMusicTheme(_ holiday: Holiday?) {
+        synth.theme = holiday == .snow ? 2 : holiday == .harvest ? 1 : 0
+    }
+
     func setIntensity(_ value: Float) {
         synth.intensity = max(0, min(1, value))
     }
@@ -352,6 +357,8 @@ struct NoiseSource {
 /// Real-time music: a bouncy D minor groove with a spooky theremin lead.
 /// Bass, pizzicato arpeggio, kick and snaps always play; hats and the lead join as intensity rises.
 final class MusicSynth {
+    /// 0 the usual spooky song, 1 the harvest (Thanksgiving) version, 2 the winter (Christmas) version.
+    var theme = 0
     var playing = false
     var intensity: Float = 0.3
     var volume: Float = 0.5
@@ -381,6 +388,10 @@ final class MusicSynth {
     private var hatEnv: Float = 0
     private var snapLowpass: Float = 0
     private var noiseState: UInt32 = 0x0BAD_5EED
+    private var bellEnv: Float = 0        // winter: sleigh bells
+    private var bellHigh: Float = 0
+    private var blockEnv: Float = 0       // harvest: woodblock
+    private var blockPhase: Float = 0
 
     /// Bass root per bar (MIDI): D, D, Bb, Bb, G, G, A, A.
     private static let roots = [50, 50, 46, 46, 43, 43, 45, 45]
@@ -389,6 +400,12 @@ final class MusicSynth {
     private static let bassPattern = [0, -99, -99, 12, -99, -99, 0, -99, 0, -99, 7, -99, 12, -99, 7, -99]
     private static let arpMinor = [12, 15, 19, 24]
     private static let arpMajor = [12, 16, 19, 24]
+    /// Winter: D, Bm, G, A, all bright and major-leaning.
+    private static let winterRoots = [50, 50, 47, 47, 43, 43, 45, 45]
+    private static let winterThirds = [4, 4, 3, 3, 4, 4, 4, 4]
+    /// Harvest: a folky D, C, A minor, G turnaround.
+    private static let harvestRoots = [50, 50, 48, 48, 45, 45, 43, 45]
+    private static let harvestThirds = [4, 4, 4, 4, 3, 3, 4, 4]
     /// Lead over two bars: 100 fifth, 101 third, 102 root, 103 octave, -1 hold, -99 release.
     private static let leadPattern = [
         100, -1, -1, -1, -1, -1, -1, -1, 101, -1, -1, -1, 102, -1, -1, -1,
@@ -408,8 +425,8 @@ final class MusicSynth {
     private func triggerStep() {
         let bar = (step / 16) % 8
         let s = step % 16
-        let root = MusicSynth.roots[bar]
-        let third = MusicSynth.thirds[bar]
+        let root = theme == 2 ? MusicSynth.winterRoots[bar] : theme == 1 ? MusicSynth.harvestRoots[bar] : MusicSynth.roots[bar]
+        let third = theme == 2 ? MusicSynth.winterThirds[bar] : theme == 1 ? MusicSynth.harvestThirds[bar] : MusicSynth.thirds[bar]
 
         let bass = MusicSynth.bassPattern[s]
         if bass > -99 {
@@ -453,6 +470,14 @@ final class MusicSynth {
         if s % 2 == 1 && intensity > 0.6 {
             hatEnv = 0.6
         }
+        if theme == 2 && (s % 2 == 0 || intensity > 0.5) {
+            // Sleigh bells shake on every eighth, and every sixteenth once the storm is close.
+            bellEnv = s % 4 == 0 ? 1 : 0.55
+        }
+        if theme == 1 && (s == 6 || s == 14 || (s == 10 && intensity > 0.5)) {
+            blockEnv = 1
+            blockPhase = 0
+        }
 
         step = (step + 1) % 128
     }
@@ -476,9 +501,21 @@ final class MusicSynth {
 
             arpPhase += arpFreq / sr
             if arpPhase >= 1 { arpPhase -= 1 }
-            let square: Float = arpPhase < 0.5 ? 1 : -1
-            arpEnv *= 0.99955
-            mix += square * arpEnv * 0.1
+            if theme == 2 {
+                // Glockenspiel: a sine with a bright inharmonic overtone, ringing a little longer.
+                let bell = sinf(twoPi * arpPhase) + 0.35 * sinf(twoPi * arpPhase * 3.98)
+                arpEnv *= 0.99975
+                mix += bell * arpEnv * 0.11
+            } else if theme == 1 {
+                // Plucked string: a soft triangle that dies away quickly.
+                let pluck = 4 * abs(arpPhase - 0.5) - 1
+                arpEnv *= 0.99935
+                mix += pluck * arpEnv * 0.16
+            } else {
+                let square: Float = arpPhase < 0.5 ? 1 : -1
+                arpEnv *= 0.99955
+                mix += square * arpEnv * 0.1
+            }
 
             leadFreq += (leadTarget - leadFreq) * 0.0008
             vibPhase += 5.5 / sr
@@ -511,6 +548,20 @@ final class MusicSynth {
             if hatEnv > 0.001 {
                 mix += noise * hatEnv * 0.05
                 hatEnv *= 0.998
+            }
+            if bellEnv > 0.001 {
+                // Bright, jangly noise: high-passed hard so it rings like little bells.
+                let jangle = noise - bellHigh
+                bellHigh += (noise - bellHigh) * 0.08
+                let shimmer = 0.6 + 0.4 * sinf(twoPi * Float(sampleInStep) * 37 / sr)
+                mix += jangle * bellEnv * 0.09 * shimmer
+                bellEnv *= 0.9993
+            }
+            if blockEnv > 0.001 {
+                blockPhase += 920 / sr
+                if blockPhase >= 1 { blockPhase -= 1 }
+                mix += sinf(twoPi * blockPhase) * blockEnv * 0.22
+                blockEnv *= 0.9975
             }
 
             out[i] = tanhf(mix * 0.9) * volume * level
