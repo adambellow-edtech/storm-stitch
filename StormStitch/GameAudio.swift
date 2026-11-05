@@ -79,7 +79,46 @@ final class GameAudio {
         synth.playing = playing
     }
 
-    /// 0 = calm, 1 = full energy. Adds hats and the theremin lead as it rises.
+    // MARK: Story score
+
+    private var storyPlayer: AVAudioPlayer?
+    private var storyGeneration = 0
+    /// Each story panel lasts this long, and the score is written so each panel is exactly two bars.
+    static let storyPanelSeconds: TimeInterval = 5.5
+
+    /// Swaps the looping game music for the story's own score, from the top.
+    func startStoryScore() {
+        synth.playing = false
+        guard musicOn else { return }
+        if storyPlayer == nil, let url = Bundle.main.url(forResource: "story-score", withExtension: "m4a") {
+            storyPlayer = try? AVAudioPlayer(contentsOf: url)
+            storyPlayer?.prepareToPlay()
+        }
+        guard let player = storyPlayer else { return }
+        storyGeneration += 1
+        player.volume = 0.8
+        player.currentTime = 0
+        player.play()
+    }
+
+    /// Keeps the score lined up with the panel on screen when the player taps ahead.
+    func cueStoryScore(panel: Int) {
+        guard let player = storyPlayer, player.isPlaying else { return }
+        let target = Double(panel) * GameAudio.storyPanelSeconds
+        if abs(player.currentTime - target) > 0.3 { player.currentTime = target }
+    }
+
+    func stopStoryScore() {
+        guard let player = storyPlayer, player.isPlaying else { return }
+        player.setVolume(0, fadeDuration: 0.4)
+        let generation = storyGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            // Only stop if the story hasn't been started again during the fade.
+            guard let self, self.storyGeneration == generation else { return }
+            self.storyPlayer?.stop()
+        }
+    }
+
     /// Switches the song to its holiday version (or back).
     func setMusicTheme(_ holiday: Holiday?) {
         synth.theme = holiday == .snow ? 2 : holiday == .harvest ? 1 : 0

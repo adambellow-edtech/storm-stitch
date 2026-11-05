@@ -55,6 +55,7 @@ extension RunScene {
         clearScreen()
         story?.removeFromParent()
         story = nil
+        audio.stopStoryScore()
 
         // Daily runs use the day's monster and no gadgets, so every score is comparable.
         switch newMode {

@@ -41,7 +41,7 @@ final class StoryPlayer: SKNode {
     private var dots: [SKShapeNode] = []
     private let skipButton = SKNode()
     private var finished = false
-    private let panelTime: TimeInterval = 5.5
+    private let panelTime: TimeInterval = GameAudio.storyPanelSeconds
 
     init(size: CGSize, safeTop: CGFloat, safeBottom: CGFloat, onFinish: @escaping () -> Void) {
         screen = size
@@ -106,6 +106,7 @@ final class StoryPlayer: SKNode {
             finish()
             return
         }
+        GameAudio.shared.cueStoryScore(panel: index)
         for (i, dot) in dots.enumerated() {
             dot.fillColor = i == index ? Palette.stitchGold : UIColor(white: 1, alpha: 0.4)
         }
@@ -125,6 +126,7 @@ final class StoryPlayer: SKNode {
         guard !finished else { return }
         finished = true
         removeAllActions()
+        GameAudio.shared.stopStoryScore()
         // Build what comes next underneath first, then fade the book away over it,
         // so the running scene behind the story never shows through.
         onFinish()

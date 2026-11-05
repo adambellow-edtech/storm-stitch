@@ -1454,8 +1454,7 @@ extension RunScene {
         player.zPosition = 1200
         addChild(player)
         story = player
-        audio.setMusic(playing: true)
-        audio.setIntensity(0.3)
+        audio.startStoryScore()
         player.start()
     }
 }
