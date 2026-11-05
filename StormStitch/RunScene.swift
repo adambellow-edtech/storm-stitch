@@ -560,8 +560,10 @@ final class RunScene: SKScene {
         pauseButton.name = "pause"
         hud.addChild(pauseButton)
 
-        let spoolArt = art.spool
-        spoolIcon = SKSpriteNode(texture: spoolArt.texture, size: CGSize(width: 28, height: 30))
+        // The same paper spool the player collects on the road.
+        let spoolArt = illustrated("spool", width: 30) ?? art.spool
+        let spoolH = min(34, 30 * spoolArt.size.height / max(1, spoolArt.size.width))
+        spoolIcon = SKSpriteNode(texture: spoolArt.texture, size: CGSize(width: 30, height: spoolH))
         hud.addChild(spoolIcon)
         spoolCountSprite.anchorPoint = CGPoint(x: 1, y: 0.5)
         hud.addChild(spoolCountSprite)

@@ -137,7 +137,14 @@ extension RunScene {
             rim.lineWidth = 3
             node.addChild(rim)
         }
-        if let image = artImage(icon) {
+        if icon == "menu-back" && artImage(icon) == nil {
+            // A cut-paper chevron. It points left; mirror the button (xScale = -1) to point right.
+            let chevron = paperChevron(size: size * 0.46)
+            chevron.xScale = -1
+            chevron.position.x = -size * 0.03
+            chevron.zPosition = 1
+            node.addChild(chevron)
+        } else if let image = artImage(icon) {
             let sprite = SKSpriteNode(texture: SKTexture(image: image))
             let k = size * 0.6 / max(image.size.width, image.size.height)
             sprite.size = CGSize(width: image.size.width * k, height: image.size.height * k)
@@ -632,8 +639,8 @@ extension RunScene {
             let gadgetBlurb = label(detail, size: 11, color: Palette.stormDark, style: .body, anchorX: 0)
             gadgetBlurb.position = CGPoint(x: -24, y: -12)
             gadgetRow.addChild(gadgetBlurb)
-            let maxWidth = cardW / 2 - 52 - (-24)
-            for sprite in [gadgetBlurb, passive] where sprite.size.width > maxWidth {
+            let maxWidth = cardW / 2 - 62 - (-24)
+            for sprite in [gadgetBlurb, passive, gadgetName, name] where sprite.size.width > maxWidth {
                 sprite.setScale(maxWidth / sprite.size.width)
             }
             addArrows(to: gadgetRow, width: cardW - 40) { [unowned self] step in
@@ -655,21 +662,50 @@ extension RunScene {
         card.run(.scale(to: 1, duration: 0.15))
     }
 
-    /// Left and right arrows on a row; the closure gets -1 or +1.
+    /// A gold paper chevron with an ink edge and a soft drop shadow, pointing right.
+    func paperChevron(size s: CGFloat) -> SKNode {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: -0.28 * s, y: 0.46 * s))
+        path.addLine(to: CGPoint(x: 0.04 * s, y: 0.46 * s))
+        path.addLine(to: CGPoint(x: 0.36 * s, y: 0))
+        path.addLine(to: CGPoint(x: 0.04 * s, y: -0.46 * s))
+        path.addLine(to: CGPoint(x: -0.28 * s, y: -0.46 * s))
+        path.addLine(to: CGPoint(x: 0.03 * s, y: 0))
+        path.closeSubpath()
+        let node = SKNode()
+        let shadow = SKShapeNode(path: path)
+        shadow.fillColor = Palette.ink.withAlphaComponent(0.3)
+        shadow.strokeColor = .clear
+        shadow.position = CGPoint(x: 1.5, y: -2)
+        node.addChild(shadow)
+        let face = SKShapeNode(path: path)
+        face.fillColor = Palette.stitchGold
+        face.strokeColor = Palette.ink
+        face.lineWidth = max(2, s * 0.09)
+        face.lineJoin = .round
+        face.zPosition = 0.1
+        node.addChild(face)
+        return node
+    }
+
+    /// Left and right paper arrows on a row; the closure gets -1 or +1.
     func addArrows(to row: SKNode, width: CGFloat, action: @escaping (Int) -> Void) {
         for side in [-1, 1] {
-            let path = CGMutablePath()
             let s = CGFloat(side)
-            path.move(to: CGPoint(x: s * 9, y: 0))
-            path.addLine(to: CGPoint(x: -s * 6, y: 11))
-            path.addLine(to: CGPoint(x: -s * 6, y: -11))
-            path.closeSubpath()
-            let arrow = SKShapeNode(path: path)
-            arrow.fillColor = Palette.ink
-            arrow.strokeColor = .clear
-            arrow.position = CGPoint(x: s * (width / 2 - 14), y: 0)
+            let arrow = SKNode()
+            if let disc = imageSprite("ui-round") {
+                disc.size = CGSize(width: 34, height: 34)
+                arrow.addChild(disc)
+            }
+            let chevron = paperChevron(size: 17)
+            chevron.xScale = s
+            chevron.position.x = s * 1
+            chevron.zPosition = 1
+            arrow.addChild(chevron)
+            arrow.position = CGPoint(x: s * (width / 2 - 20), y: 0)
             // A bigger invisible tap area around the arrow.
-            let hit = SKSpriteNode(color: .clear, size: CGSize(width: 44, height: 50))
+            let hit = SKSpriteNode(color: .clear, size: CGSize(width: 46, height: 50))
+            hit.zPosition = 2
             arrow.addChild(hit)
             row.addChild(arrow)
             onTap(arrow) { action(side) }
@@ -1011,7 +1047,7 @@ extension RunScene {
                 overlay.addChild(item)
                 let iconH = roomH * 0.72
                 let cup: SKSpriteNode
-                if let image = imageSprite("menu-trophy") {
+                if let image = imageSprite("trophy-\(trophy.rawValue)") ?? imageSprite("menu-trophy") {
                     cup = image
                     let k = iconH / image.size.height
                     cup.size = CGSize(width: image.size.width * k, height: iconH)
@@ -1103,8 +1139,8 @@ extension RunScene {
             text.zPosition = 1
             chip.addChild(text)
         } else {
-            let arrow = label("›", size: 26, color: Palette.stitchGold)
-            arrow.position = CGPoint(x: width / 2 - 24, y: 2)
+            let arrow = paperChevron(size: 16)
+            arrow.position = CGPoint(x: width / 2 - 22, y: 0)
             arrow.zPosition = 1
             node.addChild(arrow)
         }
@@ -1129,6 +1165,14 @@ extension RunScene {
             })
         ]
         #if DEBUG
+        let looks = ["Auto", "None", "Harvest", "Snow"]
+        let look = looks[max(0, min(looks.count - 1, tuning.holidayOverride))]
+        rows.append(("Dev: holiday look: \(look)", nil, { [unowned self] in
+            // Cycles Auto, None, Harvest, Snow and shows it at once on the title screen behind.
+            self.tuning.holidayOverride = (self.tuning.holidayOverride + 1) % looks.count
+            self.showTitle()
+            self.showSettings()
+        }))
         rows.append(("Dev: unlock everything", nil, { [unowned self] in
             Progress.shared.unlockEverything()
             self.showTitle()
@@ -1404,8 +1448,7 @@ extension RunScene {
         story?.removeFromParent()
         let player = StoryPlayer(size: size, safeTop: safeTop, safeBottom: safeBottom) { [unowned self] in
             Progress.shared.update { $0.storySeen = true }
-            self.story?.removeFromParent()
-            self.story = nil
+            self.story = nil  // The player fades itself out over the title, then removes itself.
             self.showTitle()
         }
         player.zPosition = 1200

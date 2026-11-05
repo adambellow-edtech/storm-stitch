@@ -125,7 +125,10 @@ final class StoryPlayer: SKNode {
         guard !finished else { return }
         finished = true
         removeAllActions()
-        run(.sequence([.fadeOut(withDuration: 0.35), .run { [weak self] in self?.onFinish() }]))
+        // Build what comes next underneath first, then fade the book away over it,
+        // so the running scene behind the story never shows through.
+        onFinish()
+        run(.sequence([.fadeOut(withDuration: 0.35), .removeFromParent()]))
     }
 
     private func makePanel(_ panel: Panel) -> SKNode {
