@@ -26,8 +26,10 @@ Change the bundle ID in `project.yml` if `com.adambellow.stormstitch` doesn't ma
 
 - **The color flood.** Notebook Meadow starts gray and torn. Every spool zips a gold-stitched patch of color into the ground around you, and trees and flowers pop into color. Fill the Stitch meter and the whole world floods with color: "WORLD STITCHED!"
 - **Pop-up hazards.** Erasers (jump), rulers on pencils (slide) and cardboard boxes (change lanes) fold up out of the page as they approach, and burst into paper scraps when you hit them.
-- **Bramble.** A layered paper rig with a run cycle, swinging arms, squash and stretch, blinking, and leaning into lane changes.
-- **The storm.** A churning wall with glowing eyes that rises behind you with every hit, throws paper scraps, rumbles with thunder, and flashes red when it's about to catch you.
+- **Bramble.** Illustrated run cycle plus jump, slide, stumble, cheer and dizzy poses, with squash and stretch and a lean into lane changes.
+- **The storm.** Three parallax cloud layers that rise behind you with every hit. Its eyes blink, narrow and turn red as it closes in, gloat when it catches you, and squeeze shut when you stitch the world.
+- **Paper world.** Textured paper road and ground in true perspective, illustrated hazards, spools, scenery and backdrop.
+- **Pause.** Pause button top left, Resume with a 3-2-1 countdown, and an automatic pause when you leave the app.
 - **Game feel.** Camera follow, lean and speed push, hit-stop, screen shake, slow-mo on close calls, rising chimes on spool streaks, dust puffs, sparkles and confetti.
 - **Sound and music.** A catchy, fun-spooky groove that builds with the run, plus synthesized effects for every action.
 - **Screens.** An animated title, a results card with 3 stars (Finish, No hits, Stitched), stats and your best score.
@@ -38,11 +40,11 @@ Change the bundle ID in `project.yml` if `com.adambellow.stormstitch` doesn't ma
   - Stickle grabs spools from the next lane. Thundercap makes the storm fall back faster.
   - All 8 are unlocked in this build; unlocking with monster scraps comes with progression.
 
-All art and audio are generated in code as stand-ins (`PaperArt.swift`, `GameAudio.swift`), so final illustrated assets and a composed score can be swapped in by name later.
+Illustrated art lives in `StormStitch/Art` (originals in `ArtSource/reference`). Anything missing falls back to the code-drawn stand-ins in `PaperArt.swift`. Music and sound effects are still synthesized in `GameAudio.swift`, ready to swap for a composed score.
 
 ## Feel tuning
 
-The slider button (top left) adjusts every feel number live, plus toggles for music, sound, haptics and an FPS counter. Send the values that feel best and they become the defaults in `Tuning.swift`.
+In builds run from Xcode, the faint slider button (bottom left) adjusts every feel number live, plus toggles for music, sound, haptics and an FPS counter. Send the values that feel best and they become the defaults in `Tuning.swift`.
 
 ## Next steps
 
