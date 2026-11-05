@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Storm Stitch: outrun the storm, stitch the world</title>
-  <meta name="description" content="A papercraft runner for iPhone. A storm is shredding the Paper World. Run with a cast of cut-paper monsters, grab golden thread and stitch the color back.">
+  <meta name="description" content="A papercraft runner for iPhone. A storm is shredding the Paper World. Run with a crew of cut-paper monsters, grab golden thread and stitch the color back.">
   <meta property="og:title" content="Storm Stitch">
   <meta property="og:description" content="Outrun the storm. Stitch the world back together. A papercraft runner for iPhone.">
   <meta property="og:image" content="https://stormstitchgame.com/assets/og-card.jpg">
   <meta property="og:url" content="https://stormstitchgame.com/">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="theme-color" content="#7cc4ef">
+  <meta name="theme-color" content="#2a2638">
   <link rel="icon" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preload" href="assets/fonts/Fredoka-Bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/hero-wide.webp" as="image">
   <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
@@ -21,8 +22,8 @@
     <div class="wrap">
       <a class="brand" href="./"><img src="assets/icon.png" alt="">Storm Stitch</a>
       <nav>
-        <a class="hide-sm" href="#cast">Monsters</a>
-        <a class="hide-sm" href="#daily">Daily Storm</a>
+        <a class="opt" href="#cast">Monsters</a>
+        <a class="opt" href="#daily">Daily Storm</a>
         <a href="support/">Support</a>
         <a href="privacy/">Privacy</a>
       </nav>
@@ -30,104 +31,89 @@
   </header>
 
   <section class="hero">
-    <div class="wrap">
-      <img class="hero-banner" src="assets/hero-wide.webp" alt="Bramble, a leafy green monster, runs with a golden needle as gold stitches close a tear between a gray storm and a bright meadow">
-      <div>
-        <h1>Outrun the storm. Stitch the world.</h1>
-        <p class="lede">The Shredder is tearing the Paper World to confetti and draining every color. Grab a golden needle, run with a crew of cut-paper monsters, and sew each page back to life before the storm catches you.</p>
-        <div class="ctas">
-          <a class="btn dark js-store" href="#" aria-disabled="true">
-            <span>Coming soon<span class="badge-soon">to the App Store</span></span>
-          </a>
-          <a class="btn gold" href="#daily">See the Daily Storm</a>
-        </div>
+    <div class="picture"><img src="assets/hero-wide.webp" alt="Bramble, a leafy green monster, runs with a golden needle as gold stitches close a tear between a gray storm and a bright meadow"></div>
+    <div class="wrap content">
+      <h1><img class="logo" src="assets/logo.png" alt="Storm Stitch"></h1>
+      <p class="tag">Outrun the storm. Stitch the world.</p>
+      <div class="btn-row">
+        <a class="btn js-store" href="#play" aria-disabled="true"><span>Coming soon<small>to the App Store on iPhone</small></span></a>
+        <a class="btn ghost" href="#story">Read the story</a>
       </div>
-      <div class="phone"><img src="assets/title-card.webp" alt="Storm Stitch title screen: Bramble holds a golden needle in front of a gray storm with glowing eyes"></div>
     </div>
   </section>
 
-  <div class="wrap strip">
-    <div class="halves">
-      <img src="assets/backdrop-gray.webp" alt="A shredded gray paper meadow" loading="lazy">
-      <img src="assets/backdrop-color.webp" alt="The same meadow stitched back into bright color" loading="lazy">
+  <section class="band paper" id="story">
+    <div class="wrap center">
+      <div class="kicker">The story</div>
+      <h2>The Paper World is coming apart</h2>
+      <p class="lead">A storm called the Shredder tears every page to confetti and drains the color. One small leafy monster finds a way to fix it.</p>
+      <div class="story">
+        <figure class="panel"><img src="assets/story-2.webp" alt="A giant paper storm with glowing eyes rolls over a bright meadow" loading="lazy"><p><b>The Shredder rolls in</b>Meadows rip. Rivers fray. One by one, the pages go gray.</p></figure>
+        <figure class="panel"><img src="assets/story-4.webp" alt="Bramble finds a golden needle and a spool of thread in the gray" loading="lazy"><p><b>Bramble finds the thread</b>A golden needle and a spool of storm-proof thread. Every stitch brings color back.</p></figure>
+        <figure class="panel"><img src="assets/story-6.webp" alt="Bramble and his monster friends run from the storm" loading="lazy"><p><b>Friends join the run</b>Bramble runs, the storm gives chase, and friends from every page join in.</p></figure>
+      </div>
     </div>
-    <div class="seam" aria-hidden="true"></div>
-    <div class="caption"><span class="pill">Every spool you grab sews the color back</span></div>
-  </div>
+  </section>
 
-  <section class="block">
-    <div class="wrap">
-      <div class="center">
+  <section class="band sky" id="play">
+    <div class="wrap play">
+      <div class="device"><img src="assets/gameplay.webp" alt="Gameplay: Bramble runs down a paper road, the world turning green as spools are collected" loading="lazy"></div>
+      <div>
         <div class="kicker">How it plays</div>
         <h2>Short runs. Big finishes.</h2>
-      </div>
-      <div class="features">
-        <div class="paper feature">
-          <img class="ico" src="assets/spool.webp" alt="" loading="lazy">
-          <h3>Swipe, jump, stitch</h3>
-          <p>Swipe between three lanes, tap to jump, swipe down to slide. Each golden spool floods the gray world with color behind you.</p>
-        </div>
-        <div class="paper feature">
-          <img class="ico" src="assets/heart.webp" alt="" loading="lazy">
-          <h3>The storm is chasing</h3>
-          <p>Hit a hazard and the Shredder rolls closer. Its eyes narrow when it smells a win. Keep stitching and it falls back.</p>
-        </div>
-        <div class="paper feature">
-          <img class="ico" src="assets/star.webp" alt="" loading="lazy">
-          <h3>Sew the seam shut</h3>
-          <p>Every stage ends at a torn seam. Reach it and your needle zig-zags it closed in a burst of color. Earn up to three stars.</p>
-        </div>
+        <ol class="steps">
+          <li><span class="num">1</span><div><h3>Swipe, jump, slide</h3><p>Three lanes, one thumb. Dodge erasers, rulers and tumbling boxes.</p></div></li>
+          <li><span class="num">2</span><div><h3>Grab the golden spools</h3><p>Every spool floods the gray world with color behind you. Miss too many and the storm closes in.</p></div></li>
+          <li><span class="num">3</span><div><h3>Sew the seam shut</h3><p>Each stage ends at a torn page. Reach it and your needle stitches it closed. Earn up to three stars.</p></div></li>
+        </ol>
       </div>
     </div>
   </section>
 
-  <section class="block" id="cast">
-    <div class="wrap">
-      <div class="center">
-        <div class="kicker">The cast</div>
-        <h2>Unlock a crew of paper monsters</h2>
-        <p>Each one runs differently. Clear stages, collect thread and win events to fill your trophy case.</p>
-      </div>
+  <section class="band paper" id="cast">
+    <div class="wrap center">
+      <div class="kicker">The cast</div>
+      <h2>Unlock a crew of paper monsters</h2>
+      <p class="lead">Each one runs a different way. Clear stages, collect thread and win events to fill your trophy case.</p>
       <div class="cast">
-        <div class="paper monster"><img src="assets/cast/bramble.webp" alt="Bramble" loading="lazy"><h3>Bramble</h3><p>Shrugs off the first hit</p></div>
-        <div class="paper monster"><img src="assets/cast/blotch.webp" alt="Blotch" loading="lazy"><h3>Blotch</h3><p>Hits pull the storm less</p></div>
-        <div class="paper monster"><img src="assets/cast/snipjaw.webp" alt="Snipjaw" loading="lazy"><h3>Snipjaw</h3><p>Slides snip through boxes</p></div>
-        <div class="paper monster"><img src="assets/cast/fizz.webp" alt="Fizz" loading="lazy"><h3>Fizz</h3><p>Faster lane changes</p></div>
-        <div class="paper monster"><img src="assets/cast/origo.webp" alt="Origo" loading="lazy"><h3>Origo</h3><p>Glides down from jumps</p></div>
-        <div class="paper monster"><img src="assets/cast/wickling.webp" alt="Wickling" loading="lazy"><h3>Wickling</h3><p>Lights up extra spools</p></div>
-        <div class="paper monster"><img src="assets/cast/stickle.webp" alt="Stickle" loading="lazy"><h3>Stickle</h3><p>Grabs spools a lane away</p></div>
-        <div class="paper monster"><img src="assets/cast/thundercap.webp" alt="Thundercap" loading="lazy"><h3>Thundercap</h3><p>Storm falls back faster</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/bramble.webp" alt="Bramble" loading="lazy"></div><h3>Bramble</h3><p>Shrugs off the first hit</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/blotch.webp" alt="Blotch" loading="lazy"></div><h3>Blotch</h3><p>Hits pull the storm less</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/snipjaw.webp" alt="Snipjaw" loading="lazy"></div><h3>Snipjaw</h3><p>Slides snip through boxes</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/fizz.webp" alt="Fizz" loading="lazy"></div><h3>Fizz</h3><p>Faster lane changes</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/origo.webp" alt="Origo" loading="lazy"></div><h3>Origo</h3><p>Glides down from jumps</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/wickling.webp" alt="Wickling" loading="lazy"></div><h3>Wickling</h3><p>Lights up extra spools</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/stickle.webp" alt="Stickle" loading="lazy"></div><h3>Stickle</h3><p>Grabs spools a lane away</p></div>
+        <div class="monster"><div class="stand"><img src="assets/cast/thundercap.webp" alt="Thundercap" loading="lazy"></div><h3>Thundercap</h3><p>Storm falls back faster</p></div>
       </div>
     </div>
   </section>
 
-  <section class="block">
+  <section class="band paper-2" id="gadgets">
     <div class="wrap center">
       <div class="kicker">Gadgets</div>
       <h2>Rewind time. Fold the road.</h2>
-      <p>Earn gadgets as you clear stages, then charge them with close calls and spools.</p>
+      <p class="lead">Earn seven gadgets as you clear stages, then charge them up with close calls and spools.</p>
       <div class="gadgets">
-        <span class="gadget"><b>Time Machine</b> rewinds the last 3 seconds</span>
-        <span class="gadget"><b>Paper Plane</b> flies over everything</span>
-        <span class="gadget"><b>Page Fold</b> skips ahead</span>
-        <span class="gadget"><b>Big Eraser</b> clears the road</span>
-        <span class="gadget"><b>Slow Ink</b> slows the world</span>
-        <span class="gadget"><b>Thread Magnet</b> pulls in spools</span>
-        <span class="gadget"><b>Stitch Shield</b> blocks a hit</span>
+        <div class="gadget star"><div class="chip"><img src="assets/gadget-rewind.webp" alt="" loading="lazy"></div><h3>Time Machine</h3><p>Rewind the last 3 seconds</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-plane.webp" alt="" loading="lazy"></div><h3>Paper Plane</h3><p>Fly over everything</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-fold.webp" alt="" loading="lazy"></div><h3>Page Fold</h3><p>Skip ahead</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-eraser.webp" alt="" loading="lazy"></div><h3>Big Eraser</h3><p>Clear the road</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-ink.webp" alt="" loading="lazy"></div><h3>Slow Ink</h3><p>Slow the world down</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-magnet.webp" alt="" loading="lazy"></div><h3>Thread Magnet</h3><p>Pull in every spool</p></div>
+        <div class="gadget"><div class="chip"><img src="assets/gadget-patch.webp" alt="" loading="lazy"></div><h3>Stitch Shield</h3><p>Block the next hit</p></div>
       </div>
     </div>
   </section>
 
-  <section class="block daily" id="daily">
-    <div class="wrap two">
+  <section class="band storm" id="daily">
+    <div class="wrap split">
+      <img class="art" src="assets/daily-storm.webp" alt="A torn calendar page with a grumpy storm cloud on top and monsters lined up at a start line" loading="lazy">
       <div>
         <div class="kicker">Daily Storm</div>
         <h2>One course. Everyone. One shot.</h2>
-        <p>Every day brings the same storm for every player, with a twist: Fog Day, Mirror Day, Spool Rain, Night Run and more. Your first run is your score. Share it, then dare a friend to beat it with a challenge link.</p>
-      </div>
-      <div class="paper">
-        <img class="section-art" src="assets/daily-storm.webp" alt="A torn calendar page with a grumpy storm cloud on top and monsters lined up at a start line" loading="lazy">
-        <div class="share-sample">Storm Stitch Daily #4 🌫️ Fog Day
+        <p>Every day brings the same storm for every player, with a twist. Your first run is your score. Share it, then dare a friend to beat it with a challenge link.</p>
+        <ul class="rules"><li>🌫️ Fog Day</li><li>🪞 Mirror Day</li><li>🧵 Spool Rain</li><li>🌙 Night Run</li><li>💨 Gusty Day</li><li>🦣 Giant Day</li></ul>
+        <div class="share">Storm Stitch Daily #4 🌫️ Fog Day
 ⭐⭐▫️  🧵 112  📏 1,486 m
 Score: 2,606
 Can you outrun the storm?</div>
@@ -135,26 +121,27 @@ Can you outrun the storm?</div>
     </div>
   </section>
 
-  <section class="block" id="holidays">
+  <section class="band paper" id="holidays">
     <div class="wrap">
       <div class="center">
         <div class="kicker">Holiday races</div>
         <h2>Race a turkey. Then a reindeer.</h2>
-        <p>Limited-time events with their own roads, hazards and a rival to beat. Win and they join your crew for good.</p>
+        <p class="lead">Limited-time events with their own roads, hazards and a rival to beat. Win and they join your crew for good.</p>
       </div>
-      <img class="wide-art" src="assets/holidays.webp" alt="Bramble races a turkey down an autumn road and a reindeer down a snowy one, split by a golden seam" loading="lazy">
-      <div class="features two-up">
-        <div class="paper feature"><h3>Turkey Trot</h3><p>November 20 to December 1. Outrun Gobbler past paper pumpkins and hay bales.</p></div>
-        <div class="paper feature"><h3>Reindeer Race</h3><p>December 2 to January 4. Beat Comet through the snow, dodging presents and snowmen.</p></div>
+      <img class="art" src="assets/holidays.webp" alt="Bramble races a turkey down an autumn road and a reindeer down a snowy one, split by a golden seam" loading="lazy" style="margin-top:36px">
+      <div class="events">
+        <div class="event"><div class="when">Nov 20 to Dec 1</div><h3>Turkey Trot</h3><p>Outrun Gobbler past paper pumpkins and hay bales.</p></div>
+        <div class="event snow"><div class="when">Dec 2 to Jan 4</div><h3>Reindeer Race</h3><p>Beat Comet through the snow, dodging presents and snowmen.</p></div>
       </div>
     </div>
   </section>
 
-  <section class="block">
-    <div class="wrap center">
-      <img src="assets/bramble-win.webp" alt="Bramble cheering" style="width:200px;margin:0 auto 10px" loading="lazy">
-      <h2>Free to play. Kind to kids.</h2>
-      <p>No sign-up and no chat. Progress stays on your iPhone.</p>
+  <section class="cta">
+    <img class="bg" src="assets/cta.webp" alt="" loading="lazy">
+    <div class="wrap content">
+      <h2>Grab the needle.</h2>
+      <p>Free to play. No sign-up, no chat. Your progress stays on your iPhone.</p>
+      <div class="btn-row"><a class="btn js-store" href="#" aria-disabled="true"><span>Coming soon<small>to the App Store on iPhone</small></span></a></div>
     </div>
   </section>
 

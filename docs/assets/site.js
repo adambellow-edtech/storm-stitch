@@ -6,6 +6,6 @@ var STORM_STITCH_APP_STORE = "";
   document.querySelectorAll(".js-store").forEach(function (el) {
     el.href = STORM_STITCH_APP_STORE;
     el.removeAttribute("aria-disabled");
-    el.innerHTML = "<span>Download<span class=\"badge-soon\">on the App Store</span></span>";
+    el.innerHTML = "<span>Download<small>on the App Store</small></span>";
   });
 })();
