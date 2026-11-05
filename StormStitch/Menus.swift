@@ -138,7 +138,7 @@ extension RunScene {
             node.addChild(rim)
         }
         if icon == "menu-back" && artImage(icon) == nil {
-            // A cut-paper chevron. It points left; mirror the button (xScale = -1) to point right.
+            // A cut-paper chevron, flipped here to point left; mirror the button (xScale = -1) to point right.
             let chevron = paperChevron(size: size * 0.46)
             chevron.xScale = -1
             chevron.position.x = -size * 0.03

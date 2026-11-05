@@ -82,11 +82,12 @@ final class GameAudio {
         buildSounds()
         engine.prepare()
 
-        // Setting up the audio session can block for a moment, so it and the engine start run off the
+        // Activating the audio session can block for a moment, so it and the engine start run off the
         // main thread. Ambient respects the silent switch and mixes with other audio, like most games.
+        // Nothing plays until this finishes (the story score waits for it), so nothing can start under
+        // the default category and stop the player's own music.
         engineStarting = true
-        let engine = self.engine
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, engine = self.engine] in
             try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
             try? AVAudioSession.sharedInstance().setActive(true)
             try? engine.start()
@@ -145,6 +146,8 @@ final class GameAudio {
     private func tickSong() {
         guard hasSong else { return }
         if songWanted && musicOn {
+            // A route change or a phone call stops the engine and the players with it: start again.
+            if songRunning && (!engine.isRunning || !songBase.isPlaying) { songRunning = false }
             songRetry -= 1
             if (!songRunning || songLoaded != songName) && songRetry <= 0 {
                 songRetry = 30  // At most one start attempt a second if the engine is unavailable.
@@ -187,6 +190,8 @@ final class GameAudio {
 
     private var storyPlayer: AVAudioPlayer?
     private var storyGeneration = 0
+    /// False once the story has ended, so a delayed start doesn't play after it.
+    private var storyWanted = false
     /// Each story panel lasts this long, and the score is written so each panel is exactly two bars.
     static let storyPanelSeconds: TimeInterval = 5.5
 
@@ -195,13 +200,22 @@ final class GameAudio {
         synth.playing = false
         songWanted = false
         guard musicOn else { return }
+        storyWanted = true
+        if engineStarting {
+            // The audio session is still being set up on first launch: try again in a moment.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self, self.storyWanted else { return }
+                self.startStoryScore()
+            }
+            return
+        }
         if storyPlayer == nil, let url = Bundle.main.url(forResource: "story-score", withExtension: "m4a") {
             storyPlayer = try? AVAudioPlayer(contentsOf: url)
             storyPlayer?.prepareToPlay()
         }
         guard let player = storyPlayer else { return }
         storyGeneration += 1
-        player.volume = 0.8
+        player.setVolume(0.8, fadeDuration: 0)
         player.currentTime = 0
         player.play()
     }
@@ -214,6 +228,7 @@ final class GameAudio {
     }
 
     func stopStoryScore() {
+        storyWanted = false
         guard let player = storyPlayer, player.isPlaying else { return }
         player.setVolume(0, fadeDuration: 0.4)
         let generation = storyGeneration
