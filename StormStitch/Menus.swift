@@ -471,7 +471,7 @@ extension RunScene {
                 if isOpen {
                     self.showStageCard(base + i)
                 } else {
-                    self.popText(i == 0 ? "Finish the last world first" : "Clear stage \(i) first", size: 20, color: .white, at: spot, rise: 30, life: 1, parent: self.overlay)
+                    self.popText(!worldOpen ? "Finish the last world first" : "Clear stage \(i) first", size: 20, color: .white, at: spot, rise: 30, life: 1, parent: self.overlay)
                 }
             }
         }
@@ -506,7 +506,7 @@ extension RunScene {
         if !worldOpen {
             let shade = SKSpriteNode(color: UIColor(white: 0, alpha: 0.35), size: size)
             shade.anchorPoint = .zero
-            shade.zPosition = 1.5
+            shade.zPosition = 4
             overlay.addChild(shade)
         }
 
