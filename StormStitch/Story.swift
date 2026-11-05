@@ -92,7 +92,7 @@ final class StoryPlayer: SKNode {
         guard !finished else { return }
         let local = convert(point, from: scene ?? self)
         if skipButton.calculateAccumulatedFrame().insetBy(dx: -10, dy: -10).contains(local) {
-            finish()
+            finish(skipped: true)
         } else {
             advance()
         }
@@ -103,7 +103,7 @@ final class StoryPlayer: SKNode {
         removeAction(forKey: "auto")
         index += 1
         guard index < StoryPlayer.panels.count else {
-            finish()
+            finish(skipped: false)
             return
         }
         GameAudio.shared.cueStoryScore(panel: index)
@@ -122,11 +122,12 @@ final class StoryPlayer: SKNode {
         run(.sequence([.wait(forDuration: panelTime), .run { [weak self] in self?.advance() }]), withKey: "auto")
     }
 
-    private func finish() {
+    private func finish(skipped: Bool) {
         guard !finished else { return }
         finished = true
         removeAllActions()
-        GameAudio.shared.stopStoryScore()
+        // Skip cuts the score quickly; reaching the end lets its last chord ring out.
+        GameAudio.shared.stopStoryScore(fade: skipped ? 0.4 : 3)
         // Build what comes next underneath first, then fade the book away over it,
         // so the running scene behind the story never shows through.
         onFinish()

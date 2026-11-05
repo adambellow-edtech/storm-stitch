@@ -29,6 +29,7 @@ final class GameAudio {
     private var songTimer: Timer?
     private var songRetry = 0
     private var songCache: (name: String, base: AVAudioPCMBuffer, drive: AVAudioPCMBuffer)?
+    private var songLoading = false
     private lazy var hasSong: Bool = Bundle.main.url(forResource: "music-main-base", withExtension: "caf") != nil
     var sfxOn = true
 
@@ -99,40 +100,53 @@ final class GameAudio {
         songTimer = timer
     }
 
-    private func loadSong(_ name: String) -> (AVAudioPCMBuffer, AVAudioPCMBuffer)? {
-        if let cache = songCache, cache.name == name { return (cache.base, cache.drive) }
+    /// Decodes one song's two layers. Runs off the main thread; touches no shared state.
+    private static func decodeSong(_ name: String, format: AVAudioFormat) -> (AVAudioPCMBuffer, AVAudioPCMBuffer)? {
         func read(_ file: String) -> AVAudioPCMBuffer? {
             guard let url = Bundle.main.url(forResource: file, withExtension: "caf"),
                   let audio = try? AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false),
                   audio.processingFormat.channelCount == 2, audio.processingFormat.sampleRate == 44_100,
-                  let buffer = AVAudioPCMBuffer(pcmFormat: songFormat, frameCapacity: AVAudioFrameCount(audio.length)) else { return nil }
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(audio.length)) else { return nil }
             do { try audio.read(into: buffer) } catch { return nil }
             return buffer
         }
         guard let base = read("music-\(name)-base"), let drive = read("music-\(name)-drive") else { return nil }
-        songCache = (name, base, drive)  // Keep only the current song in memory.
         return (base, drive)
     }
 
-    /// Starts both layers from the top on the same sample so they stay locked together.
-    private func startSong() {
-        guard let pair = loadSong(songName) ?? (songName == "main" ? nil : loadSong("main")) else {
-            // The files wouldn't load: go back to the synthesized music for this session.
-            hasSong = false
-            synth.playing = songWanted
-            return
+    /// Decodes a song in the background (about 23 MB of audio), then keeps it as the only one in memory.
+    private func loadSongInBackground(_ name: String) {
+        guard !songLoading else { return }
+        songLoading = true
+        let format = songFormat
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let pair = GameAudio.decodeSong(name, format: format) ?? (name == "main" ? nil : GameAudio.decodeSong("main", format: format))
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.songLoading = false
+                if let pair {
+                    self.songCache = (name, pair.0, pair.1)
+                } else {
+                    // The files wouldn't load: go back to the synthesized music for this session.
+                    self.hasSong = false
+                    self.synth.playing = self.songWanted
+                }
+            }
         }
-        let (base, drive) = pair
+    }
+
+    /// Starts both layers from the top on the same sample so they stay locked together.
+    private func startSong(_ cache: (name: String, base: AVAudioPCMBuffer, drive: AVAudioPCMBuffer)) {
         if !engine.isRunning && !engineStarting { try? engine.start() }
         guard engine.isRunning else { return }
         songBase.stop()
         songDrive.stop()
-        songBase.scheduleBuffer(base, at: nil, options: .loops, completionHandler: nil)
-        songDrive.scheduleBuffer(drive, at: nil, options: .loops, completionHandler: nil)
+        songBase.scheduleBuffer(cache.base, at: nil, options: .loops, completionHandler: nil)
+        songDrive.scheduleBuffer(cache.drive, at: nil, options: .loops, completionHandler: nil)
         let start = AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.08))
         songBase.play(at: start)
         songDrive.play(at: start)
-        songLoaded = songName
+        songLoaded = cache.name
         songRunning = true
     }
 
@@ -142,22 +156,38 @@ final class GameAudio {
         songRunning = false
     }
 
-    /// Fades the song in and out and eases the drive layer toward the current intensity.
+    /// Runs 30 times a second: fades the song in and out, crossfades between versions,
+    /// and eases the drive layer toward the current intensity.
     private func tickSong() {
         guard hasSong else { return }
-        if songWanted && musicOn {
-            // A route change or a phone call stops the engine and the players with it: start again.
-            if songRunning && (!engine.isRunning || !songBase.isPlaying) { songRunning = false }
-            songRetry -= 1
-            if (!songRunning || songLoaded != songName) && songRetry <= 0 {
-                songRetry = 30  // At most one start attempt a second if the engine is unavailable.
-                songFade = 0
-                startSong()
+        // A route change or a phone call stops the engine and the players with it: start again.
+        if songRunning && (!engine.isRunning || !songBase.isPlaying) { songRunning = false }
+        let wanted = songWanted && musicOn
+        let needsSwitch = songRunning && songLoaded != songName
+
+        if wanted && !needsSwitch {
+            if !songRunning {
+                songRetry -= 1
+                if let cache = songCache, cache.name == songName {
+                    if songRetry <= 0 {
+                        songRetry = 30  // At most one start attempt a second if the engine is unavailable.
+                        songFade = 0
+                        startSong(cache)
+                    }
+                } else {
+                    loadSongInBackground(songName)
+                }
             }
-            songFade = min(1, songFade + Float(1.0 / 18))
+            if songRunning { songFade = min(1, songFade + Float(1.0 / 18)) }
         } else {
+            // Fading out: for a pause or game over, or before switching to another version.
             songFade = max(0, songFade - Float(1.0 / 15))
-            if songFade == 0 && songRunning { stopSong() }
+            if needsSwitch && songCache?.name != songName { loadSongInBackground(songName) }
+            if songFade == 0 && songRunning && (needsSwitch || !musicOn) {
+                // Switch versions (the next tick starts the new one), or stop if music is off.
+                // Otherwise the loop keeps going silently, so a pause picks up where it left off.
+                stopSong()
+            }
         }
         driveLevel += (driveTarget - driveLevel) * 0.06
         songBase.volume = songFade * 0.6
@@ -227,12 +257,13 @@ final class GameAudio {
         if abs(player.currentTime - target) > 0.3 { player.currentTime = target }
     }
 
-    func stopStoryScore() {
+    /// Fades the story score out: quickly on Skip, slowly when the story ends so its last chord rings out.
+    func stopStoryScore(fade: TimeInterval = 0.4) {
         storyWanted = false
         guard let player = storyPlayer, player.isPlaying else { return }
-        player.setVolume(0, fadeDuration: 0.4)
+        player.setVolume(0, fadeDuration: fade)
         let generation = storyGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + fade + 0.05) { [weak self] in
             // Only stop if the story hasn't been started again during the fade.
             guard let self, self.storyGeneration == generation else { return }
             self.storyPlayer?.stop()
