@@ -1882,7 +1882,7 @@ final class RunScene: SKScene {
         let stride = sin(runPhase * .pi)
 
         let hasPoses = monster.id == "bramble"
-        if sliding {
+        if sliding && state != .over {
             sx = hasPoses ? 1 : 1.25
             sy = hasPoses ? 1 : 0.55
         } else if landSquash > 0 {
@@ -2176,6 +2176,12 @@ final class RunScene: SKScene {
         footerSprite.position = CGPoint(x: textX - 2, y: -cardH * 0.26)
         footerSprite.zPosition = 1
         node.addChild(footerSprite)
+
+        // Long names or lines shrink to stay clear of the right arrow.
+        let maxWidth = cardW / 2 - 40 - textX
+        for sprite in [nameSprite, passiveSprite, footerSprite] where sprite.size.width > maxWidth {
+            sprite.setScale(maxWidth / sprite.size.width)
+        }
     }
 
     /// Arrows switch monsters; tapping the card goes to the next one. Returns true when the tap was used.
@@ -2184,7 +2190,7 @@ final class RunScene: SKScene {
         let cardH = pickerWidth * 300.0 / 720.0
         let dx = point.x - node.position.x
         let dy = point.y - node.position.y
-        guard abs(dx) < pickerWidth / 2 + 10, abs(dy) < cardH / 2 + 10 else { return false }
+        guard abs(dx) < pickerWidth / 2 + 10, dy > -cardH / 2, dy < cardH / 2 + 10 else { return false }
         let step = dx < -pickerWidth * 0.32 ? -1 : 1
         Monster.selectedIndex = Monster.selectedIndex + step
         monster = Monster.roster[Monster.selectedIndex]
