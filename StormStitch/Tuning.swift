@@ -44,6 +44,8 @@ final class Tuning: ObservableObject {
     @Published var musicOn = true
     @Published var soundOn = true
     @Published var showFPS = false
+    /// Holiday preview for testing: 0 follows the calendar, 1 none, 2 Harvest Gale, 3 Snowstorm.
+    @Published var holidayOverride = 0
 
     func reset() {
         startSpeed = Defaults.startSpeed
@@ -64,5 +66,6 @@ final class Tuning: ObservableObject {
         musicOn = true
         soundOn = true
         showFPS = false
+        holidayOverride = 0
     }
 }

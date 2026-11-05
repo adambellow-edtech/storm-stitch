@@ -5,3 +5,4 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 StormStitch/Info.plist
+StormStitch/StormStitch.entitlements

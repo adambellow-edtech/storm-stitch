@@ -21,12 +21,20 @@ targets:
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
         CADisableMinimumFrameDurationOnPhone: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.adambellow.stormstitch
+            CFBundleURLSchemes:
+              - stormstitch
         UIAppFonts:
           - Fredoka-SemiBold.ttf
           - Fredoka-Bold.ttf
           - NunitoSans-Regular.ttf
           - NunitoSans-Bold.ttf
           - NunitoSans-ExtraBold.ttf
+    entitlements:
+      path: StormStitch/StormStitch.entitlements
+      properties:
+        com.apple.developer.game-center: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.adambellow.stormstitch

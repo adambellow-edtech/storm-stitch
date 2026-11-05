@@ -7,6 +7,8 @@ struct StormStitchApp: App {
             GameView()
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
+                .onAppear { GameCenter.authenticate() }
+                .onOpenURL { DeepLink.handle($0) }
         }
     }
 }

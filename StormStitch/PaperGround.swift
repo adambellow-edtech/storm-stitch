@@ -11,11 +11,14 @@ enum PaperGround {
 
     /// Returns nil when the textures aren't in the bundle, so the flat-color fallback is used.
     static func make(colored: Bool, rect: CGRect, horizonY: CGFloat, unitK: CGFloat,
-                     camHeight: Double, camBack: Double, centerX: CGFloat) -> SKSpriteNode? {
-        let roadName = colored ? "road-color" : "road-gray"
-        let groundName = colored ? "ground-color" : "ground-gray"
-        guard let roadImage = UIImage(named: roadName),
-              let groundImage = UIImage(named: groundName) else { return nil }
+                     camHeight: Double, camBack: Double, centerX: CGFloat,
+                     roadName: String? = nil, groundName: String? = nil) -> SKSpriteNode? {
+        let defaultRoad = colored ? "road-color" : "road-gray"
+        let defaultGround = colored ? "ground-color" : "ground-gray"
+        // Holiday textures replace the defaults when they're in the app.
+        let roadImage = roadName.flatMap { UIImage(named: $0) } ?? UIImage(named: defaultRoad)
+        let groundImage = groundName.flatMap { UIImage(named: $0) } ?? UIImage(named: defaultGround)
+        guard let roadImage, let groundImage else { return nil }
 
         let road = SKTexture(image: roadImage)
         road.filteringMode = .linear
@@ -27,8 +30,8 @@ enum PaperGround {
         sprite.position = rect.origin
 
         // Average texture colors, used as the distance fog so far-off detail doesn't shimmer.
-        let roadFog = colored ? SIMD3<Float>(0.953, 0.782, 0.594) : SIMD3<Float>(0.589, 0.576, 0.601)
-        let groundFog = colored ? SIMD3<Float>(0.531, 0.728, 0.198) : SIMD3<Float>(0.564, 0.540, 0.572)
+        let roadFog = averageColor(roadImage)
+        let groundFog = averageColor(groundImage)
         let edgeColor = colored ? SIMD3<Float>(1.0, 0.98, 0.93) : SIMD3<Float>(0.86, 0.86, 0.89)
 
         let shader = SKShader(source: source)
@@ -47,10 +50,39 @@ enum PaperGround {
             SKUniform(name: "u_offset", float: 0),
             SKUniform(name: "u_roadFog", vectorFloat3: roadFog),
             SKUniform(name: "u_groundFog", vectorFloat3: groundFog),
-            SKUniform(name: "u_edge", vectorFloat3: edgeColor)
+            SKUniform(name: "u_edge", vectorFloat3: edgeColor),
+            SKUniform(name: "u_fogNear", float: 16),
+            SKUniform(name: "u_fogFar", float: 60)
         ]
         sprite.shader = shader
         return sprite
+    }
+
+    /// Fog Day pulls the fog in close; normal runs keep it near the horizon.
+    static func setFog(_ sprite: SKSpriteNode?, near: Float, far: Float) {
+        sprite?.shader?.uniformNamed("u_fogNear")?.floatValue = near
+        sprite?.shader?.uniformNamed("u_fogFar")?.floatValue = far
+    }
+
+    /// The average color of an image, for the fog.
+    private static func averageColor(_ image: UIImage) -> SIMD3<Float> {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let small = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        var result = SIMD3<Float>(0.6, 0.6, 0.6)
+        guard let cg = small.cgImage else { return result }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        pixel.withUnsafeMutableBytes { buffer in
+            guard let base = buffer.baseAddress,
+                  let context = CGContext(data: base, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            result = SIMD3<Float>(Float(buffer[0]) / 255, Float(buffer[1]) / 255, Float(buffer[2]) / 255)
+        }
+        return result
     }
 
     /// Scrolls the textures. Wrapped at 12 world units (a multiple of both tile sizes) to keep precision.
@@ -81,7 +113,7 @@ enum PaperGround {
 
         // Fade into flat fog toward the horizon.
         vec3 fogColor = mix(u_groundFog, u_roadFog, onRoad);
-        float fog = smoothstep(16.0, 60.0, depth);
+        float fog = smoothstep(u_fogNear, u_fogFar, depth);
         color = mix(color, fogColor, fog);
 
         gl_FragColor = vec4(color, 1.0);

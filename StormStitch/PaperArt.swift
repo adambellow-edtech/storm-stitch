@@ -29,6 +29,7 @@ final class PaperArt {
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         let result = Art(texture: texture, size: size)
+        if cache.count > 600 { cache.removeAll(keepingCapacity: true) }
         cache[key] = result
         return result
     }
@@ -544,9 +545,98 @@ final class PaperArt {
                 .font: font, .foregroundColor: outline, .strokeColor: outline, .strokeWidth: -24
             ]
             let fillAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fill]
-            (string as NSString).draw(at: CGPoint(x: pad, y: pad + size * 0.08), withAttributes: shadowAttrs)
-            (string as NSString).draw(at: CGPoint(x: pad, y: pad), withAttributes: outlineAttrs)
+            // Dark text sits on paper: draw it clean, without the outline and shadow.
+            var white: CGFloat = 1
+            var alpha: CGFloat = 1
+            if !fill.getWhite(&white, alpha: &alpha) { white = 1 }
+            if white > 0.45 {
+                (string as NSString).draw(at: CGPoint(x: pad, y: pad + size * 0.08), withAttributes: shadowAttrs)
+                (string as NSString).draw(at: CGPoint(x: pad, y: pad), withAttributes: outlineAttrs)
+            }
             (string as NSString).draw(at: CGPoint(x: pad, y: pad), withAttributes: fillAttrs)
+        }
+    }
+
+    /// Splits text into lines that fit a width in the game's fonts.
+    static func wrap(_ string: String, fontSize: CGFloat, maxWidth: CGFloat, style: TextStyle) -> [String] {
+        let fontName = style == .heading ? "Fredoka-Bold" : "NunitoSans-ExtraBold"
+        let font = UIFont(name: fontName, size: fontSize) ?? UIFont.systemFont(ofSize: fontSize, weight: .heavy)
+        // Leave room for the outline the text is drawn with.
+        let limit = maxWidth - fontSize * 0.5
+        var lines: [String] = []
+        var line = ""
+        for word in string.split(separator: " ") {
+            let candidate = line.isEmpty ? String(word) : line + " " + word
+            if (candidate as NSString).size(withAttributes: [.font: font]).width > limit && !line.isEmpty {
+                lines.append(line)
+                line = String(word)
+            } else {
+                line = candidate
+            }
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
+    }
+
+    // MARK: Stand-ins for round 3 art
+
+    /// The torn seam across the road at the end of a stage, 360 x 300. Ground at the bottom.
+    var seamGate: Art {
+        art("seam.gate", size: CGSize(width: 360, height: 300)) { ctx in
+            for px in [CGFloat(14), CGFloat(326)] {
+                PaperArt.cut(ctx, PaperArt.roundRect(CGRect(x: px, y: 20, width: 20, height: 276), 6),
+                             fill: Palette.stitchGold, edge: 4, shadow: 4)
+            }
+            let banner = PaperArt.roundRect(CGRect(x: 26, y: 34, width: 308, height: 190), 10)
+            PaperArt.cut(ctx, banner, fill: Palette.paper)
+            // The jagged tear down the middle.
+            var points: [CGPoint] = []
+            var y: CGFloat = 34
+            var left = true
+            while y < 224 {
+                points.append(CGPoint(x: left ? 168 : 192, y: y))
+                y += 16
+                left.toggle()
+            }
+            points.append(CGPoint(x: 180, y: 224))
+            let tear = CGMutablePath()
+            tear.addLines(between: points)
+            ctx.setStrokeColor(Palette.ink.cgColor)
+            ctx.setLineWidth(9)
+            ctx.setLineJoin(.round)
+            ctx.addPath(tear)
+            ctx.strokePath()
+            ctx.setStrokeColor(UIColor(hex: 0xFFE36B).cgColor)
+            ctx.setLineWidth(3)
+            ctx.addPath(tear)
+            ctx.strokePath()
+        }
+    }
+
+    /// A golden needle trailing thread, 150 x 60.
+    var needle: Art {
+        art("needle", size: CGSize(width: 150, height: 60)) { ctx in
+            let body = CGMutablePath()
+            body.move(to: CGPoint(x: 8, y: 30))
+            body.addLine(to: CGPoint(x: 120, y: 22))
+            body.addQuadCurve(to: CGPoint(x: 120, y: 38), control: CGPoint(x: 146, y: 30))
+            body.closeSubpath()
+            PaperArt.cut(ctx, body, fill: Palette.stitchGold, edge: 3, shadow: 3, grain: false)
+            ctx.setFillColor(Palette.ink.cgColor)
+            ctx.addPath(PaperArt.ellipse(124, 30, 8, 4))
+            ctx.fillPath()
+        }
+    }
+
+    /// An autumn leaf for the Harvest Gale, 40 x 40, in three colors.
+    func leaf(variant: Int) -> Art {
+        let colors = [UIColor(hex: 0xFF7A2F), UIColor(hex: 0xD93D3D), Palette.stitchGold]
+        return art("leaf.\(variant % 3)", size: CGSize(width: 40, height: 40)) { ctx in
+            let leaf = CGMutablePath()
+            leaf.move(to: CGPoint(x: 20, y: 3))
+            leaf.addQuadCurve(to: CGPoint(x: 20, y: 37), control: CGPoint(x: 42, y: 18))
+            leaf.addQuadCurve(to: CGPoint(x: 20, y: 3), control: CGPoint(x: -2, y: 18))
+            PaperArt.cut(ctx, leaf, fill: colors[variant % 3], edge: 2, shadow: 2, grain: false)
         }
     }
 }

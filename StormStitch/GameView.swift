@@ -96,6 +96,16 @@ struct TuningPanel: View {
                         .font(.subheadline.weight(.semibold))
                     Toggle("Show FPS", isOn: $tuning.showFPS)
                         .font(.subheadline.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Holiday preview (applies on the next screen)").font(.subheadline.weight(.semibold))
+                        Picker("Holiday", selection: $tuning.holidayOverride) {
+                            Text("Auto").tag(0)
+                            Text("None").tag(1)
+                            Text("Harvest").tag(2)
+                            Text("Snow").tag(3)
+                        }
+                        .pickerStyle(.segmented)
+                    }
                 }
                 .padding([.horizontal, .bottom])
             }

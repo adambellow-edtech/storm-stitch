@@ -9,7 +9,7 @@ final class RunScene: SKScene {
 
     // MARK: Types
 
-    enum State { case title, running, paused, over }
+    enum State { case title, menu, story, running, paused, celebrating, over }
 
     enum HazardKind: CaseIterable {
         case low       // eraser: jump over
@@ -24,6 +24,7 @@ final class RunScene: SKScene {
             case hazard(HazardKind)
             case spool
             case scenery(SceneryKind, variant: Int)
+            case gate
         }
 
         let kind: Kind
@@ -37,6 +38,12 @@ final class RunScene: SKScene {
         var colored = false
         var popTime = -1.0
         let phase = Double.random(in: 0..<6.28)
+        /// Taken out of the world (collected, crashed into, erased or passed), kept for the Time Machine.
+        var retired = false
+        var removedAt = 0.0
+        var removedZ = 0.0
+        /// Distance run when this thing appeared, so the Time Machine can unspawn it.
+        var spawnedAt = 0.0
 
         init(kind: Kind, sprite: SKSpriteNode, worldScale: CGFloat, x: Double, z: Double, y: Double) {
             self.kind = kind
@@ -75,162 +82,213 @@ final class RunScene: SKScene {
 
     // MARK: Config
 
-    private let tuning: Tuning
-    private let haptics = Haptics()
-    private let audio = GameAudio.shared
-    private let art = PaperArt.shared
+    let tuning: Tuning
+    let haptics = Haptics()
+    let audio = GameAudio.shared
+    let art = PaperArt.shared
 
     // Camera matched to the K2 gameplay reference: high and behind, long road, runner in the lower third.
-    private let camHeight = 4.8
-    private let camBack = 3.6
-    private let laneWidth = 1.0
-    private let spawnZ = 46.0
-    private let dashSpacing = 3.0
-    private let dashLength = 1.3
-    private let dashesPerDivider = 26
-    private let rigBaseScale: CGFloat = 0.9
-    private let landSquashTime = 0.14
-    private let jumpBufferTime = 0.12
-    private let titleSpeed = 4.0
+    let camHeight = 4.8
+    let camBack = 3.6
+    let laneWidth = 1.0
+    let spawnZ = 46.0
+    let dashSpacing = 3.0
+    let dashLength = 1.3
+    let dashesPerDivider = 26
+    let rigBaseScale: CGFloat = 0.9
+    let landSquashTime = 0.14
+    let jumpBufferTime = 0.12
+    let titleSpeed = 4.0
 
-    private var horizonY: CGFloat = 0
-    private var unitK: CGFloat = 0
+    var horizonY: CGFloat = 0
+    var unitK: CGFloat = 0
 
     // MARK: Nodes
 
-    private let camRig = SKNode()
-    private let worldRoot = SKNode()
-    private let skyGray = SKSpriteNode(color: Palette.stormGray, size: CGSize(width: 10, height: 10))
-    private let skyBlue = SKSpriteNode(color: UIColor(hex: 0x8FD3FF), size: CGSize(width: 10, height: 10))
-    private var sunSprite = SKSpriteNode()
-    private var cloudSprites: [SKSpriteNode] = []
-    private var hillsGray = SKSpriteNode()
-    private var hillsColor = SKSpriteNode()
+    let camRig = SKNode()
+    let worldRoot = SKNode()
+    let skyGray = SKSpriteNode(color: Palette.stormGray, size: CGSize(width: 10, height: 10))
+    let skyBlue = SKSpriteNode(color: UIColor(hex: 0x8FD3FF), size: CGSize(width: 10, height: 10))
+    var sunSprite = SKSpriteNode()
+    var cloudSprites: [SKSpriteNode] = []
+    var hillsGray = SKSpriteNode()
+    var hillsColor = SKSpriteNode()
     /// Illustrated sky-and-hills backdrop; the gray version shows until color floods in.
-    private var backdropGray: SKSpriteNode?
+    var backdropGray: SKSpriteNode?
     /// Shader-drawn paper road and ground (gray, and color revealed by stitching).
-    private var texturedGray: SKSpriteNode?
-    private var texturedColor: SKSpriteNode?
-    private var backdropColor: SKSpriteNode?
-    private let groundLayer = SKNode()
-    private let colorCrop = SKCropNode()
-    private let maskRoot = SKNode()
-    private let colorLayer = SKNode()
-    private let stitchLayer = SKNode()
-    private let dashLayer = SKNode()
-    private let objectLayer = SKNode()
-    private var dashes: [SKSpriteNode] = []
+    var texturedGray: SKSpriteNode?
+    var texturedColor: SKSpriteNode?
+    var backdropColor: SKSpriteNode?
+    let groundLayer = SKNode()
+    let colorCrop = SKCropNode()
+    let maskRoot = SKNode()
+    let colorLayer = SKNode()
+    let stitchLayer = SKNode()
+    let dashLayer = SKNode()
+    let objectLayer = SKNode()
+    var dashes: [SKSpriteNode] = []
 
-    private let playerNode = SKNode()
-    private let rig = SKNode()
-    private var brambleSprite = SKSpriteNode()
-    private let brambleBack = SKTexture(imageNamed: "bramble-back")
-    private let brambleFront = SKTexture(imageNamed: "bramble-front")
+    let playerNode = SKNode()
+    let rig = SKNode()
+    var brambleSprite = SKSpriteNode()
+    let brambleBack = SKTexture(imageNamed: "bramble-back")
+    let brambleFront = SKTexture(imageNamed: "bramble-front")
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
-    private var poseTextures: [String: (texture: SKTexture, size: CGSize)] = [:]
-    private var currentPose = ""
+    var poseTextures: [String: (texture: SKTexture, size: CGSize)] = [:]
+    var currentPose = ""
     /// The monster running this session, and title-screen picker state.
-    private var monster = Monster.roster[Monster.selectedIndex]
-    private var pickerNode: SKNode?
-    private var pickerWidth: CGFloat = 0
+    var monster = Monster.roster[Monster.selectedIndex]
+    var pickerNode: SKNode?
+    var pickerWidth: CGFloat = 0
     /// Bramble's once-per-run shrug.
-    private var shrugUsed = false
-    private var hitPoseTimer = 0.0
+    var shrugUsed = false
+    var hitPoseTimer = 0.0
     /// Pause button in the HUD, and the 3-2-1 countdown when resuming.
-    private let pauseButton = SKNode()
-    private var resumeCountdown = 0.0
-    private var shownCountdown = 0
-    private var playerShadow = SKSpriteNode()
+    let pauseButton = SKNode()
+    var resumeCountdown = 0.0
+    var shownCountdown = 0
+    var playerShadow = SKSpriteNode()
 
-    private let stormRoot = SKNode()
-    private var stormBack = SKSpriteNode()
-    private var stormFront = SKSpriteNode()
+    let stormRoot = SKNode()
+    var stormBack = SKSpriteNode()
+    var stormFront = SKSpriteNode()
     /// Illustrated storm wall (eyes included) and the solid cloud base that fills below it.
-    private var stormArt: SKSpriteNode?
+    var stormArt: SKSpriteNode?
     /// Parallax storm layers: a dark one drifting behind, one rolling in front.
-    private var stormFar: SKSpriteNode?
-    private var stormNear: SKSpriteNode?
+    var stormFar: SKSpriteNode?
+    var stormNear: SKSpriteNode?
     /// The storm's glowing eyes, on their own layer so they can blink, squint and glare.
-    private var stormGlare: SKSpriteNode?
-    private var eyeBlinkTimer = 2.5
-    private var eyeBlinkPhase = -1.0
-    private var eyePop = 0.0
-    private var eyeGloat = false
-    private var eyeDefeated = false
-    private let stormFill = SKSpriteNode(color: UIColor(hex: 0x605362), size: CGSize(width: 10, height: 10))
+    var stormGlare: SKSpriteNode?
+    var eyeBlinkTimer = 2.5
+    var eyeBlinkPhase = -1.0
+    var eyePop = 0.0
+    var eyeGloat = false
+    var eyeDefeated = false
+    let stormFill = SKSpriteNode(color: UIColor(hex: 0x605362), size: CGSize(width: 10, height: 10))
     /// Eye line in the storm picture, measured up from its bottom edge.
-    private let stormEyeLine: CGFloat = 0.31
-    private var stormEyes: [SKSpriteNode] = []
-    private var stormScraps: SKEmitterNode?
+    let stormEyeLine: CGFloat = 0.31
+    var stormEyes: [SKSpriteNode] = []
+    var stormScraps: SKEmitterNode?
 
-    private let fxRoot = SKNode()
-    private let hud = SKNode()
-    private let flash = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
-    private let vignette = SKSpriteNode(color: UIColor(hex: 0xFF3B30), size: CGSize(width: 10, height: 10))
-    private var timerSprite = SKSpriteNode()
-    private var spoolIcon = SKSpriteNode()
-    private var spoolCountSprite = SKSpriteNode()
-    private let timerPill = SKSpriteNode()
-    private let spoolPill = SKSpriteNode()
-    private var hearts: [SKSpriteNode] = []
-    private let meterBack = SKShapeNode()
-    private let meterFill = SKSpriteNode(color: Palette.stitchGold, size: CGSize(width: 10, height: 10))
-    private var meterLabel = SKSpriteNode()
-    private var meterWidth: CGFloat = 180
-    private let overlay = SKNode()
+    let fxRoot = SKNode()
+    let hud = SKNode()
+    let flash = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
+    let vignette = SKSpriteNode(color: UIColor(hex: 0xFF3B30), size: CGSize(width: 10, height: 10))
+    var timerSprite = SKSpriteNode()
+    var spoolIcon = SKSpriteNode()
+    var spoolCountSprite = SKSpriteNode()
+    let timerPill = SKSpriteNode()
+    let spoolPill = SKSpriteNode()
+    var hearts: [SKSpriteNode] = []
+    let meterBack = SKShapeNode()
+    let meterFill = SKSpriteNode(color: Palette.stitchGold, size: CGSize(width: 10, height: 10))
+    var meterLabel = SKSpriteNode()
+    var meterWidth: CGFloat = 180
+    let overlay = SKNode()
 
     // MARK: Run state
 
-    private var state: State = .title
-    private var things: [Thing] = []
-    private var patches: [Patch] = []
-    private var lastUpdate: TimeInterval = 0
-    private var overAt = 0.0
-    private var clock = 0.0
-    private var elapsed = 0.0
-    private var distance = 0.0
-    private var runSpeed = 0.0
-    private var nextRowIn = 0.0
-    private var nextSceneryIn = 0.0
-    private var nextPatchIn = 0.0
-    private var heartsLeft = 3
-    private var hitsTaken = 0
-    private var spools = 0
-    private var streak = 0
-    private var bestStreak = 0
-    private var streakTimer = 0.0
-    private var meter = 0.0
-    private var fullyStitched = false
-    private var stormDistance = 6.0
-    private var invulnerable = 0.0
-    private var timeScale = 1.0
-    private var hitStop = 0.0
-    private var shownSeconds = -1
-    private var shownSpools = -1
-    private var nextThunder = 6.0
+    var state: State = .title
+    var things: [Thing] = []
+    var patches: [Patch] = []
+    var lastUpdate: TimeInterval = 0
+    var overAt = 0.0
+    var clock = 0.0
+    var elapsed = 0.0
+    var distance = 0.0
+    var runSpeed = 0.0
+    var nextRowIn = 0.0
+    var nextSceneryIn = 0.0
+    var nextPatchIn = 0.0
+    var heartsLeft = 3
+    var hitsTaken = 0
+    var spools = 0
+    var streak = 0
+    var bestStreak = 0
+    var streakTimer = 0.0
+    var meter = 0.0
+    var fullyStitched = false
+    var stormDistance = 6.0
+    var invulnerable = 0.0
+    var timeScale = 1.0
+    var hitStop = 0.0
+    var shownSeconds = -1
+    var shownSpools = -1
+    var nextThunder = 6.0
+
+    // MARK: Modes, gadgets and menus
+
+    var mode: RunMode = .endless
+    var config = RunConfig(length: .infinity, startSpeed: 9, endSpeed: 15, rampTime: 120, intervalStart: 1,
+                           intervalEnd: 0.62, overheadFrom: 15, doubleChance: 0.45, meterPerSpool: 0.012,
+                           rule: .calm, seed: 1, hints: false)
+    var rng = GameRNG(seed: 1)
+    var gustRNG = GameRNG(seed: 2)
+    var stats = RunStats()
+    var closeCalls = 0
+    var gateSpawned = false
+    var gateThing: Thing?
+    var celebrationSpeed = 0.0
+    var fullyStitchedBeforeGate = false
+    var gadget: Gadget?
+    var gadgetCharge = 0
+    var shieldActive = false
+    var magnetTimer = 0.0
+    var planeTimer = 0.0
+    var inkTimer = 0.0
+    var foldTimer = 0.0
+    var rewindsThisRun = 0
+    let gadgetButton = SKNode()
+    let gadgetRing = SKShapeNode()
+    let gadgetIcon = SKSpriteNode()
+    let shieldRing = SKShapeNode()
+    let planeSprite = SKSpriteNode()
+    var snapshots: [RunSnapshot] = []
+    var snapshotTimer = 0.0
+    var graveyard: [Thing] = []
+    var gustTimer = 6.0
+    var gustWarned = false
+    var gustDirection = 1
+    let nightShade = SKSpriteNode()
+    var theme: Holiday?
+    var themeApplied = false
+    var holidayEmitters: [SKEmitterNode] = []
+    let rivalSprite = SKSpriteNode()
+    var rivalX = 1.0
+    var rivalTargetX = 1.0
+    var rivalLaneTimer = 0.0
+    let rivalLabel = SKSpriteNode()
+    var shownRival = -1
+    var tapTargets: [(node: SKNode, action: () -> Void)] = []
+    var story: StoryPlayer?
+    var hintIndex = 0
+    var frontBlinkTimer = 2.5
+    var lastRenderDt = 0.0
 
     // MARK: Player state
 
-    private var laneIndex = 0
-    private var playerX = 0.0
-    private var laneFromX = 0.0
-    private var laneToX = 0.0
-    private var laneProgress = 1.0
-    private var lastLaneChange = -10.0
-    private var lastLaneFrom = 0
-    private var playerY = 0.0
-    private var velocityY = 0.0
-    private var slideTimer = 0.0
-    private var landSquash = 0.0
-    private var jumpBuffer = 0.0
-    private var runPhase = 0.0
+    var laneIndex = 0
+    var playerX = 0.0
+    var laneFromX = 0.0
+    var laneToX = 0.0
+    var laneProgress = 1.0
+    var lastLaneChange = -10.0
+    /// True when the run just finished was today's first (scored) Daily Storm.
+    var lastRunCountedDaily = false
+    var lastLaneFrom = 0
+    var playerY = 0.0
+    var velocityY = 0.0
+    var slideTimer = 0.0
+    var landSquash = 0.0
+    var jumpBuffer = 0.0
+    var runPhase = 0.0
 
     // MARK: Touch state
 
-    private var trackedTouch: UITouch?
-    private var touchStart = CGPoint.zero
-    private var didSwipe = false
-    private var lastSwipeDir = 0
+    var trackedTouch: UITouch?
+    var touchStart = CGPoint.zero
+    var didSwipe = false
+    var lastSwipeDir = 0
 
     // MARK: Setup
 
@@ -250,12 +308,23 @@ final class RunScene: SKScene {
             buildPlayer()
             buildStorm()
             buildHUD()
+            buildGadgetButton()
+            syncSettings()
             audio.start()
             NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive),
                                                    name: UIApplication.willResignActiveNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(linkOpened),
+                                                   name: DeepLink.opened, object: nil)
         }
         layoutScene()
-        if size.width > 10 && size.height > 10 { showTitle() }
+        if size.width > 10 && size.height > 10 && state == .title {
+            showTitle()
+            if !Progress.shared.data.storySeen { playStory() }
+        }
+    }
+
+    @objc func linkOpened() {
+        if state == .title || state == .menu || state == .over { checkPendingLink() }
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -265,7 +334,7 @@ final class RunScene: SKScene {
         if state == .title { showTitle() }
     }
 
-    private func buildNodeTree() {
+    func buildNodeTree() {
         addChild(camRig)
         camRig.addChild(worldRoot)
 
@@ -319,6 +388,13 @@ final class RunScene: SKScene {
         objectLayer.zPosition = 0
         worldRoot.addChild(objectLayer)
 
+        nightShade.texture = makeNightShade()
+        nightShade.alpha = 0
+        nightShade.zPosition = 590
+        addChild(nightShade)
+        rivalSprite.isHidden = true
+        objectLayer.addChild(rivalSprite)
+
         stormRoot.zPosition = 500
         addChild(stormRoot)
         fxRoot.zPosition = 600
@@ -339,7 +415,7 @@ final class RunScene: SKScene {
         addChild(overlay)
     }
 
-    private func buildPlayer() {
+    func buildPlayer() {
         let shadowArt = art.shadow
         playerShadow = SKSpriteNode(texture: shadowArt.texture, size: shadowArt.size)
         objectLayer.addChild(playerShadow)
@@ -358,7 +434,7 @@ final class RunScene: SKScene {
         objectLayer.addChild(playerNode)
     }
 
-    private func buildStorm() {
+    func buildStorm() {
         let wall = art.stormWall
         stormBack = SKSpriteNode(texture: wall.texture, size: wall.size)
         stormBack.anchorPoint = CGPoint(x: 0.5, y: 1)
@@ -447,7 +523,7 @@ final class RunScene: SKScene {
         stormScraps = scraps
     }
 
-    private func buildHUD() {
+    func buildHUD() {
         for _ in 0..<3 {
             let heartArt = illustrated("ui-heart", width: 38) ?? art.heart(full: true)
             let heart = SKSpriteNode(texture: heartArt.texture, size: CGSize(width: 38, height: 38 * heartArt.size.height / heartArt.size.width))
@@ -505,9 +581,12 @@ final class RunScene: SKScene {
         meterLabel = SKSpriteNode(texture: label.texture, size: label.size)
         meterLabel.zPosition = 2
         hud.addChild(meterLabel)
+
+        rivalLabel.isHidden = true
+        hud.addChild(rivalLabel)
     }
 
-    private func layoutScene() {
+    func layoutScene() {
         guard size.width > 10, size.height > 10 else { return }
         let w = size.width
         let h = size.height
@@ -575,10 +654,12 @@ final class RunScene: SKScene {
         texturedGray = PaperGround.make(colored: false, rect: shaderRect, horizonY: horizonY, unitK: unitK,
                                         camHeight: camHeight, camBack: camBack, centerX: w / 2)
         texturedColor = PaperGround.make(colored: true, rect: shaderRect, horizonY: horizonY, unitK: unitK,
-                                         camHeight: camHeight, camBack: camBack, centerX: w / 2)
+                                         camHeight: camHeight, camBack: camBack, centerX: w / 2,
+                                         roadName: theme?.roadColor, groundName: theme?.groundColor)
         if let texturedGray, let texturedColor {
             groundLayer.addChild(texturedGray)
             colorLayer.addChild(texturedColor)
+            applyFog()
         } else {
         let grayGround = SKSpriteNode(color: UIColor(hex: 0x8A8C99), size: groundRect)
         grayGround.anchorPoint = CGPoint(x: 0.5, y: 1)
@@ -636,6 +717,14 @@ final class RunScene: SKScene {
 
         vignette.size = size
         flash.size = size
+        nightShade.size = CGSize(width: max(w, h) * 2.6, height: max(w, h) * 2.6)
+        let bottomInset = max(view?.safeAreaInsets.bottom ?? 0, 16)
+        gadgetButton.position = CGPoint(x: w - 52, y: bottomInset + 58)
+        rivalLabel.position = CGPoint(x: 70, y: h - max(view?.safeAreaInsets.top ?? 0, 20) - 70)
+        for emitter in holidayEmitters {
+            emitter.position = CGPoint(x: w / 2, y: h + 30)
+            emitter.particlePositionRange = CGVector(dx: w * 1.3, dy: 0)
+        }
 
         let topInset = max(view?.safeAreaInsets.top ?? 0, 20)
         let top = h - topInset - 28
@@ -663,7 +752,7 @@ final class RunScene: SKScene {
         render(dt: 0)
     }
 
-    private func makeRoadPath() -> CGPath? {
+    func makeRoadPath() -> CGPath? {
         let edge = laneWidth * 1.5
         guard let nearLeft = project(x: -edge, z: -2.6),
               let nearRight = project(x: edge, z: -2.6),
@@ -681,7 +770,7 @@ final class RunScene: SKScene {
     // MARK: Projection
 
     /// World point to screen. `scale` is the node scale for art drawn at 100 points per world unit.
-    private func project(x: Double, z: Double, y: Double = 0) -> (point: CGPoint, scale: CGFloat, depth: Double)? {
+    func project(x: Double, z: Double, y: Double = 0) -> (point: CGPoint, scale: CGFloat, depth: Double)? {
         let depth = z + camBack
         guard depth > 0.25 else { return nil }
         let s = CGFloat(1.0 / depth)
@@ -690,14 +779,14 @@ final class RunScene: SKScene {
         return (CGPoint(x: px, y: py), s * unitK / 100, depth)
     }
 
-    private func screenPoint(ofWorld point: CGPoint) -> CGPoint {
+    func screenPoint(ofWorld point: CGPoint) -> CGPoint {
         worldRoot.convert(point, to: self)
     }
 
     // MARK: Screens
 
     /// A sprite from a bundled PNG at its native pixel size; callers set the display size.
-    private func imageSprite(_ name: String) -> SKSpriteNode? {
+    func imageSprite(_ name: String) -> SKSpriteNode? {
         guard let image = UIImage(named: name) else { return nil }
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
@@ -705,7 +794,7 @@ final class RunScene: SKScene {
     }
 
     /// A paper button with a label, sized by width.
-    private func paperButton(_ label: String, width: CGFloat) -> SKNode {
+    func paperButton(_ label: String, width: CGFloat, pulse: Bool = true) -> SKNode {
         let node = SKNode()
         let height = width * 300.0 / 720.0
         if let paper = imageSprite("ui-button") {
@@ -722,194 +811,19 @@ final class RunScene: SKScene {
         let textSprite = SKSpriteNode(texture: text.texture, size: text.size)
         textSprite.position = CGPoint(x: 0, y: -height * 0.02)
         textSprite.zPosition = 1
+        if textSprite.size.width > width * 0.82 { textSprite.setScale(width * 0.82 / textSprite.size.width) }
         node.addChild(textSprite)
-        node.run(.repeatForever(.sequence([
-            .scale(to: 1.05, duration: 0.55),
-            .scale(to: 1.0, duration: 0.55)
-        ])))
+        if pulse {
+            node.run(.repeatForever(.sequence([
+                .scale(to: 1.05, duration: 0.55),
+                .scale(to: 1.0, duration: 0.55)
+            ])))
+        }
         return node
     }
 
-    private func showTitle() {
-        state = .title
-        eyeGloat = false
-        eyeDefeated = false
-        audio.setMusic(playing: false)
-        overlay.removeAllChildren()
-        hud.removeAllActions()
-        hud.alpha = 0
-        let w = size.width
-        let h = size.height
-        let bottomInset = max(view?.safeAreaInsets.bottom ?? 0, 16)
-
-        resetWorld()
-        runSpeed = titleSpeed
-
-        if let card = imageSprite("title-card"), let cardTexture = card.texture {
-            // Fit the title art to the screen width, top aligned so the logo clears the island.
-            let fitted = CGSize(width: w, height: card.size.height * w / card.size.width)
-            card.size = fitted
-            card.anchorPoint = CGPoint(x: 0.5, y: 1)
-            card.position = CGPoint(x: w / 2, y: h)
-            overlay.addChild(card)
-            // Taller screens: extend the paper road by mirroring the bottom of the art, so there's no seam.
-            let gap = h - fitted.height
-            if gap > 0 {
-                let stripTexture = SKTexture(rect: CGRect(x: 0, y: 0, width: 1, height: 0.15), in: cardTexture)
-                let strip = SKSpriteNode(texture: stripTexture, size: CGSize(width: w, height: gap + 2))
-                strip.anchorPoint = CGPoint(x: 0.5, y: 0)
-                strip.position = CGPoint(x: w / 2, y: gap + 1)
-                strip.yScale = -1
-                overlay.addChild(strip)
-                strip.alpha = 0
-                strip.run(.fadeIn(withDuration: 0.35))
-            }
-            card.alpha = 0
-            card.run(.fadeIn(withDuration: 0.35))
-        } else {
-            let logo = art.text("STORM STITCH", size: min(44, w * 0.1), fill: Palette.stitchGold)
-            let logoSprite = SKSpriteNode(texture: logo.texture, size: logo.size)
-            logoSprite.position = CGPoint(x: w / 2, y: h * 0.78)
-            overlay.addChild(logoSprite)
-        }
-
-        let buttonWidth = min(270, w * 0.66)
-        let button = paperButton("Tap to run", width: buttonWidth)
-        let buttonY = bottomInset + 64 + buttonWidth * 300.0 / 720.0 / 2
-        button.position = CGPoint(x: w / 2, y: buttonY)
-        button.zPosition = 2
-        overlay.addChild(button)
-
-        let buttonTop = buttonY + buttonWidth * 300.0 / 720.0 / 2
-        buildPicker(aboveY: buttonTop + 8)
-
-        let help = art.text("Swipe to change lanes  \u{00B7}  Tap to jump  \u{00B7}  Swipe down to slide",
-                            size: min(12, w * 0.03), fill: .white, style: .body)
-        let helpSprite = SKSpriteNode(texture: help.texture, size: help.size)
-        helpSprite.position = CGPoint(x: w / 2, y: bottomInset + 26)
-        helpSprite.zPosition = 2
-        overlay.addChild(helpSprite)
-    }
-
-    private func showResults(caught: Bool, finished: Bool) {
-        overlay.removeAllChildren()
-        hud.removeAllActions()
-        hud.run(.fadeOut(withDuration: 0.25))
-        let w = size.width
-        let h = size.height
-        let topInset = max(view?.safeAreaInsets.top ?? 0, 20)
-        let cardW = min(w - 16, 390)
-        let cardH = cardW * 855.0 / 1140.0
-        let k = cardW / 380
-
-        let card = SKNode()
-        card.position = CGPoint(x: w / 2, y: h - topInset - 12 - cardH / 2)
-        overlay.addChild(card)
-
-        if let paper = imageSprite("ui-card") {
-            paper.size = CGSize(width: cardW, height: cardH)
-            card.addChild(paper)
-        } else {
-            let panel = SKShapeNode(rect: CGRect(x: -cardW / 2, y: -cardH / 2, width: cardW, height: cardH), cornerRadius: 24)
-            panel.fillColor = Palette.paper
-            panel.strokeColor = .white
-            panel.lineWidth = 6
-            card.addChild(panel)
-        }
-
-        let titleText = finished ? "Run complete!" : (caught ? "Caught by the storm!" : "Out of hearts!")
-        let title = art.text(titleText, size: 24 * k, fill: finished ? Palette.stitchGold : .white)
-        let titleSprite = SKSpriteNode(texture: title.texture, size: title.size)
-        titleSprite.position = CGPoint(x: 0, y: cardH * 0.25)
-        titleSprite.zPosition = 1
-        card.addChild(titleSprite)
-
-        let earned = [finished, hitsTaken == 0 && finished, fullyStitched]
-        let labels = ["Finish", "No hits", "Stitched"]
-        let starY = cardH * 0.07
-        for i in 0..<3 {
-            let starArt = illustrated(earned[i] ? "ui-star" : "ui-star-empty", width: 50 * k) ?? art.star(filled: earned[i])
-            let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 46 * k, height: 46 * k))
-            star.position = CGPoint(x: CGFloat(i - 1) * 74 * k, y: starY)
-            star.zPosition = 1
-            star.setScale(0)
-            star.run(.sequence([
-                .wait(forDuration: 0.25 + Double(i) * 0.18),
-                .scale(to: 1.25, duration: 0.12),
-                .scale(to: 1, duration: 0.1),
-                .run { [weak self] in
-                    if earned[i] {
-                        self?.audio.chime(step: 2 + i * 2)
-                        self?.haptics.spool()
-                    }
-                }
-            ]))
-            card.addChild(star)
-            let caption = art.text(labels[i], size: 10.5 * k, fill: .white, style: .body)
-            let captionSprite = SKSpriteNode(texture: caption.texture, size: caption.size)
-            captionSprite.position = CGPoint(x: star.position.x, y: starY - 31 * k)
-            captionSprite.zPosition = 1
-            card.addChild(captionSprite)
-        }
-
-        let bestBefore = UserDefaults.standard.integer(forKey: "bestSpools")
-        let isNewBest = spools > bestBefore
-        if isNewBest { UserDefaults.standard.set(spools, forKey: "bestSpools") }
-
-        let seconds = Int(elapsed)
-        let cells = [
-            ("Spools", "\(spools)"),
-            ("Distance", "\(Int(distance)) m"),
-            ("Time", "\(seconds / 60):\(String(format: "%02d", seconds % 60))"),
-            ("Stitched", "\(Int(meter * 100))%"),
-            ("Best streak", "\(bestStreak)"),
-            ("Best ever", "\(max(spools, bestBefore))")
-        ]
-        for (index, cell) in cells.enumerated() {
-            let column = CGFloat(index % 3 - 1)
-            let rowY = index < 3 ? -cardH * 0.13 : -cardH * 0.29
-            let value = SKLabelNode(fontNamed: "Fredoka-SemiBold")
-            value.text = cell.1
-            value.fontSize = 20 * k
-            value.fontColor = Palette.ink
-            value.verticalAlignmentMode = .center
-            value.position = CGPoint(x: column * cardW * 0.28, y: rowY)
-            value.zPosition = 1
-            card.addChild(value)
-            let label = SKLabelNode(fontNamed: "NunitoSans-Bold")
-            label.text = cell.0
-            label.fontSize = 11 * k
-            label.fontColor = Palette.stormDark
-            label.verticalAlignmentMode = .center
-            label.position = CGPoint(x: value.position.x, y: rowY - 17 * k)
-            label.zPosition = 1
-            card.addChild(label)
-        }
-
-        if isNewBest {
-            let newBest = art.text("New best!", size: 17 * k, fill: Palette.heart)
-            let newBestSprite = SKSpriteNode(texture: newBest.texture, size: newBest.size)
-            newBestSprite.position = CGPoint(x: cardW / 2 - 52 * k, y: cardH / 2 - 14 * k)
-            newBestSprite.zRotation = -0.2
-            newBestSprite.zPosition = 2
-            card.addChild(newBestSprite)
-            newBestSprite.run(.repeatForever(.sequence([.scale(to: 1.12, duration: 0.4), .scale(to: 1, duration: 0.4)])))
-        }
-
-        let buttonWidth = min(240, w * 0.6)
-        let button = paperButton("Run again", width: buttonWidth)
-        button.position = CGPoint(x: w / 2, y: card.position.y - cardH / 2 - 6 - buttonWidth * 300.0 / 720.0 / 2)
-        overlay.addChild(button)
-
-        card.setScale(0.7)
-        card.alpha = 0
-        card.run(.group([.fadeIn(withDuration: 0.15), .scale(to: 1, duration: 0.25)]))
-        button.alpha = 0
-        button.run(.sequence([.wait(forDuration: 0.5), .fadeIn(withDuration: 0.2)]))
-    }
-
     /// Fades out whatever is on the overlay instead of cutting it.
-    private func fadeOverlay() {
+    func fadeOverlay() {
         let leaving = SKNode()
         leaving.zPosition = overlay.zPosition
         addChild(leaving)
@@ -921,9 +835,32 @@ final class RunScene: SKScene {
 
     // MARK: Run flow
 
-    private func resetWorld() {
+    func resetWorld() {
         for thing in things { thing.sprite.removeFromParent() }
         things.removeAll()
+        graveyard.removeAll()
+        snapshots.removeAll()
+        snapshotTimer = 0
+        rng = GameRNG(seed: config.seed)
+        gustRNG = GameRNG(seed: config.seed &+ 99)
+        gustTimer = 6
+        gustWarned = false
+        closeCalls = 0
+        gateSpawned = false
+        gateThing = nil
+        fullyStitchedBeforeGate = false
+        gadgetCharge = 0
+        shieldActive = false
+        shieldRing.isHidden = true
+        lastLaneChange = -10
+        lastLaneFrom = 0
+        magnetTimer = 0
+        planeTimer = 0
+        inkTimer = 0
+        foldTimer = 0
+        rewindsThisRun = 0
+        hintIndex = 0
+        removeAction(forKey: "celebrate")
         for patch in patches {
             patch.mask.removeFromParent()
             patch.stitch?.removeFromParent()
@@ -974,46 +911,82 @@ final class RunScene: SKScene {
         }
     }
 
-    private func startRun() {
-        let fromTitle = state == .title
-        fadeOverlay()
-        if !fromTitle { resetWorld() }
-        distance = 0
-        state = .running
-        eyeGloat = false
-        eyeDefeated = false
-        runSpeed = tuning.startSpeed
-        hud.removeAllActions()
-        hud.alpha = 1
-        shownSeconds = -1
-        shownSpools = -1
-        updateHUD()
-        audio.play(.start)
-        audio.setMusic(playing: true)
-        haptics.success()
-        // A hop to kick things off.
-        velocityY = tuning.jumpVelocity * 0.7
-        playerY = 0.0001
+    /// Totals for the run that just ended.
+    func makeStats(finished: Bool) -> RunStats {
+        var result = RunStats()
+        result.spools = spools
+        result.distance = distance
+        result.hits = hitsTaken
+        result.closeCalls = closeCalls
+        result.bestStreak = bestStreak
+        result.stitched = finished ? fullyStitchedBeforeGate : fullyStitched
+        result.meterPercent = Int(min(1, meter) * 100)
+        result.elapsed = elapsed
+        result.finished = finished
+        result.rewinds = rewindsThisRun
+        return result
     }
 
-    private func endRun(caught: Bool) {
+    func starsFor(_ result: RunStats) -> Int {
+        switch mode {
+        case .stage(let index):
+            guard result.finished else { return 0 }
+            return 1 + (Stage.meadow[index].challenge.met(by: result) ? 1 : 0) + (result.stitched ? 1 : 0)
+        case .race(let holiday):
+            guard result.finished, result.spools > holiday.rivalTarget else { return 0 }
+            return 1 + (result.hits == 0 ? 1 : 0) + (result.stitched ? 1 : 0)
+        case .endless:
+            return (result.distance >= 1000 ? 1 : 0) + (result.hits == 0 ? 1 : 0) + (result.stitched ? 1 : 0)
+        case .daily, .challenge:
+            return (result.finished ? 1 : 0) + (result.hits == 0 ? 1 : 0) + (result.stitched ? 1 : 0)
+        }
+    }
+
+    /// Saves the run, reports scores, and shows the results.
+    func concludeRun(caught: Bool, finished: Bool) {
         state = .over
-        eyeGloat = true
         overAt = clock
+        trackedTouch = nil
+        stats = makeStats(finished: finished)
+        let stars = starsFor(stats)
+        if case .daily(let storm) = mode {
+            lastRunCountedDaily = Progress.shared.data.dailyScores[storm.key] == nil
+        } else {
+            lastRunCountedDaily = false
+        }
+        let unlocks = Progress.shared.record(stats, mode: mode, stars: stars)
+        switch mode {
+        case .daily:
+            // Only the first run of the day counts; practice runs stay off the board.
+            if lastRunCountedDaily { GameCenter.submit(stats.score, to: GameCenter.dailyBoard) }
+        case .endless:
+            GameCenter.submit(stats.score, to: GameCenter.endlessBoard)
+        case .stage:
+            GameCenter.submit(Progress.shared.totalStars, to: GameCenter.starsBoard)
+        default:
+            break
+        }
+        gadgetButton.isHidden = true
+        rivalLabel.isHidden = true
+        rivalSprite.isHidden = true
+        clearActiveEffects()
+        showRunResults(caught: caught, finished: finished, stars: stars, unlocks: unlocks)
+    }
+
+    func endRun(caught: Bool) {
+        eyeGloat = true
         audio.setMusic(playing: false)
         audio.play(.gameOver)
         haptics.gameOver()
-        showResults(caught: caught, finished: false)
+        concludeRun(caught: caught, finished: false)
     }
 
-    private func finishRun() {
-        state = .over
+    func finishRun() {
         eyeDefeated = true
-        overAt = clock
         audio.setMusic(playing: false)
         audio.play(.finish)
         haptics.success()
-        showResults(caught: false, finished: true)
+        concludeRun(caught: false, finished: true)
     }
 
     // MARK: Frame loop
@@ -1035,21 +1008,24 @@ final class RunScene: SKScene {
             timeScale += (1 - timeScale) * min(1, realDt * 6)
             dt = realDt * timeScale
         }
+        if inkTimer > 0 && state == .running { dt *= 0.5 }
 
         switch state {
         case .running:
             step(dt)
         case .paused:
             stepCountdown(realDt)
-        case .title, .over:
+        case .celebrating:
+            stepCelebration(dt)
+        case .title, .menu, .story, .over:
             ambient(dt)
         }
         render(dt: realDt)
     }
 
     /// Title and results screens: the world keeps drifting by so it feels alive.
-    private func ambient(_ dt: Double) {
-        runSpeed += ((state == .title ? titleSpeed : 0) - runSpeed) * min(1, dt * 2)
+    func ambient(_ dt: Double) {
+        runSpeed += ((state == .over ? 0 : titleSpeed) - runSpeed) * min(1, dt * 2)
         advanceWorld(runSpeed * dt, dt: dt)
         if laneProgress < 1 {
             laneProgress = min(1, laneProgress + dt / 0.2)
@@ -1058,18 +1034,20 @@ final class RunScene: SKScene {
         updatePlayerPhysics(dt)
     }
 
-    private func step(_ dt: Double) {
+    func step(_ dt: Double) {
         elapsed += dt
-        let t = min(elapsed / max(tuning.runLength, 1), 1)
-        runSpeed = lerp(tuning.startSpeed, tuning.endSpeed, t)
+        let t = min(elapsed / max(config.rampTime, 1), 1)
+        runSpeed = lerp(config.startSpeed, config.endSpeed, t) * (foldTimer > 0 ? 3.5 : 1)
         let move = runSpeed * dt
         advanceWorld(move, dt: dt)
 
         nextRowIn -= move
         if nextRowIn <= 0 {
-            spawnRow(atZ: spawnZ + nextRowIn)
-            let interval = lerp(tuning.rowIntervalStart, tuning.rowIntervalEnd, t)
-            nextRowIn += max(runSpeed * interval, 4.5)
+            if elapsed < config.length - 4.5 {
+                spawnRow(atZ: spawnZ + nextRowIn)
+            }
+            let interval = lerp(config.intervalStart, config.intervalEnd, t)
+            nextRowIn += max(lerp(config.startSpeed, config.endSpeed, t) * interval, 4.5)
         }
 
         if laneProgress < 1 {
@@ -1090,6 +1068,8 @@ final class RunScene: SKScene {
 
         checkCollisions()
         guard state == .running else { return }
+        stepExtras(dt)
+        guard state == .running else { return }
 
         let recover = tuning.stormRecoverRate * (monster.ability == .counterstorm ? 2.2 : 1)
         stormDistance = min(tuning.stormStart, stormDistance + recover * dt)
@@ -1106,21 +1086,25 @@ final class RunScene: SKScene {
         }
 
         audio.setIntensity(Float(0.3 + t * 0.5 + closeness * 0.4))
-
-        if elapsed >= tuning.runLength {
-            finishRun()
-            return
-        }
-
         updateHUD()
     }
 
-    private func updatePlayerPhysics(_ dt: Double) {
+    func updatePlayerPhysics(_ dt: Double) {
+        if planeTimer > 0 {
+            // The Paper Plane cruises above the hazards.
+            playerY += (2.1 - playerY) * min(1, dt * 5)
+            velocityY = 0
+            return
+        }
         if playerY > 0 || velocityY > 0 {
             var g = velocityY < 0 ? tuning.gravity * tuning.fallMultiplier : tuning.gravity
             // Origo floats down slowly unless you slam.
             if monster.ability == .glide && velocityY < 0 && velocityY > -tuning.jumpVelocity * 1.2 {
                 g *= 0.4
+            }
+            // Comet hangs in the air a little longer.
+            if monster.ability == .bounce && velocityY > -tuning.jumpVelocity * 1.2 {
+                g *= 0.8
             }
             velocityY -= g * dt
             playerY += velocityY * dt
@@ -1136,7 +1120,7 @@ final class RunScene: SKScene {
         }
     }
 
-    private func advanceWorld(_ move: Double, dt: Double) {
+    func advanceWorld(_ move: Double, dt: Double) {
         distance += move
         for thing in things {
             thing.prevZ = thing.z
@@ -1161,7 +1145,11 @@ final class RunScene: SKScene {
 
         things.removeAll { thing in
             if thing.z < -3 {
-                thing.sprite.removeFromParent()
+                if case .scenery = thing.kind {
+                    thing.sprite.removeFromParent()
+                } else {
+                    retire(thing)
+                }
                 return true
             }
             return false
@@ -1178,39 +1166,46 @@ final class RunScene: SKScene {
 
     // MARK: Spawning
 
-    private func spawnRow(atZ z: Double) {
-        let t = elapsed / max(tuning.runLength, 1)
-        var lanes = [-1, 0, 1].shuffled()
+    func spawnRow(atZ z: Double) {
+        // Every choice comes from the run's seeded generator, so a daily course is the same for everyone.
+        var lanes = [-1, 0, 1].shuffled(using: &rng)
         let freeLane = lanes.removeFirst()
-        let hazardCount = (t > 0.3 && Double.random(in: 0...1) < 0.5) ? 2 : 1
-        let allowed: [HazardKind] = elapsed < 15 ? [.low, .crate] : HazardKind.allCases
+        let hazardCount = Double.random(in: 0...1, using: &rng) < config.doubleChance ? 2 : 1
+        let allowed: [HazardKind] = elapsed < config.overheadFrom ? [.low, .crate] : HazardKind.allCases
 
         var lowLane: Int?
         for i in 0..<hazardCount {
-            let kind = allowed.randomElement() ?? .low
+            let kind = allowed.randomElement(using: &rng) ?? .low
             addHazard(kind, lane: lanes[i], z: z)
             if kind == .low { lowLane = lanes[i] }
         }
 
-        let roll = Double.random(in: 0...1)
+        let roll = Double.random(in: 0...1, using: &rng)
         let glow = monster.ability == .glow
-        if let lowLane, roll < (glow ? 0.5 : 0.35) {
+        let rain = config.rule == .spoolRain
+        if let lowLane, roll < (glow || rain ? 0.5 : 0.35) {
             let offsets = [-2.4, -1.2, 0.0, 1.2, 2.4]
             let heights = [0.5, 0.95, 1.2, 0.95, 0.5]
             for i in 0..<offsets.count {
                 addSpool(lane: lowLane, z: z + offsets[i], y: heights[i])
             }
-        } else if roll < (glow ? 1.01 : 0.85) {
+        } else if roll < (glow || rain ? 1.01 : 0.85) {
             for i in 0..<(glow ? 7 : 5) {
                 addSpool(lane: freeLane, z: z + Double(i) * 1.2, y: 0.4)
+            }
+        }
+        // Spool Rain fills the other open lane too.
+        if rain && hazardCount == 1 && lanes.count > 1 {
+            for i in 0..<5 {
+                addSpool(lane: lanes[1], z: z + 0.6 + Double(i) * 1.2, y: 0.4)
             }
         }
     }
 
     /// Loads an illustrated PNG from the app bundle, sized to `width` art units (100 per world unit).
     /// Returns nil when the image hasn't been added yet, so the code-drawn stand-in is used instead.
-    private var illustratedCache: [String: Art] = [:]
-    private func illustrated(_ name: String, width: CGFloat) -> Art? {
+    var illustratedCache: [String: Art] = [:]
+    func illustrated(_ name: String, width: CGFloat) -> Art? {
         if let cached = illustratedCache[name] { return cached }
         guard let image = UIImage(named: name), image.size.width > 0 else { return nil }
         let texture = SKTexture(image: image)
@@ -1220,12 +1215,15 @@ final class RunScene: SKScene {
         return art
     }
 
-    private func addHazard(_ kind: HazardKind, lane: Int, z: Double) {
+    func addHazard(_ kind: HazardKind, lane: Int, z: Double) {
         let hazardArt: Art
         let anchorY: CGFloat
         switch kind {
         case .low:
-            if let picture = illustrated("hazard-eraser", width: 100) {
+            if let name = theme?.lowHazard, let picture = illustrated(name, width: 100) {
+                hazardArt = picture
+                anchorY = 0.03
+            } else if let picture = illustrated("hazard-eraser", width: 100) {
                 hazardArt = picture
                 anchorY = 0.03
             } else {
@@ -1241,7 +1239,10 @@ final class RunScene: SKScene {
                 anchorY = 10.0 / 190.0
             }
         case .crate:
-            if let picture = illustrated("hazard-box", width: 100) {
+            if let name = theme?.crateHazard, let picture = illustrated(name, width: 100) {
+                hazardArt = picture
+                anchorY = 0.03
+            } else if let picture = illustrated("hazard-box", width: 100) {
                 hazardArt = picture
                 anchorY = 0.03
             } else {
@@ -1253,20 +1254,24 @@ final class RunScene: SKScene {
         sprite.anchorPoint = CGPoint(x: 0.5, y: anchorY)
         sprite.alpha = 0
         objectLayer.addChild(sprite)
-        things.append(Thing(kind: .hazard(kind), sprite: sprite, worldScale: 1,
-                            x: Double(lane) * laneWidth, z: z, y: 0))
+        let hazard = Thing(kind: .hazard(kind), sprite: sprite, worldScale: config.rule == .giant ? 1.35 : 1,
+                           x: Double(lane) * laneWidth, z: z, y: 0)
+        hazard.spawnedAt = distance
+        things.append(hazard)
     }
 
-    private func addSpool(lane: Int, z: Double, y: Double) {
+    func addSpool(lane: Int, z: Double, y: Double) {
         let spoolArt = illustrated("spool", width: 58) ?? art.spool
         let sprite = SKSpriteNode(texture: spoolArt.texture, size: spoolArt.size)
         sprite.alpha = 0
         objectLayer.addChild(sprite)
-        things.append(Thing(kind: .spool, sprite: sprite, worldScale: 0.8,
-                            x: Double(lane) * laneWidth, z: z, y: y))
+        let spool = Thing(kind: .spool, sprite: sprite, worldScale: 0.8,
+                          x: Double(lane) * laneWidth, z: z, y: y)
+        spool.spawnedAt = distance
+        things.append(spool)
     }
 
-    private func spawnScenery(atZ z: Double) {
+    func spawnScenery(atZ z: Double) {
         let count = Int.random(in: 2...3)
         for _ in 0..<count {
             let side: Double = Bool.random() ? -1 : 1
@@ -1306,7 +1311,7 @@ final class RunScene: SKScene {
 
     /// Illustrated scenery, used only when both the color and gray versions exist,
     /// so a stitched object swaps to a matching picture.
-    private func illustratedScenery(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art? {
+    func illustratedScenery(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art? {
         let colorName: String
         let grayName: String
         let width: CGFloat
@@ -1324,12 +1329,17 @@ final class RunScene: SKScene {
             grayName = "flower-gray"
             width = 44
         }
+        if kind == .tree, let theme,
+           let themedColor = illustrated(theme.treeColor, width: width),
+           let themedGray = illustrated(theme.treeGray, width: width) {
+            return colored ? Art(texture: themedColor.texture, size: themedGray.size) : themedGray
+        }
         guard let color = illustrated(colorName, width: width),
               let gray = illustrated(grayName, width: width) else { return nil }
         return colored ? Art(texture: color.texture, size: gray.size) : gray
     }
 
-    private func sceneryArt(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art {
+    func sceneryArt(_ kind: SceneryKind, variant: Int, colored: Bool) -> Art {
         if let picture = illustratedScenery(kind, variant: variant, colored: colored) {
             return picture
         }
@@ -1340,14 +1350,14 @@ final class RunScene: SKScene {
         }
     }
 
-    private func spawnAmbientPatch(atZ z: Double) {
+    func spawnAmbientPatch(atZ z: Double) {
         let chance = fullyStitched ? 1.0 : meter * 1.15
         guard Double.random(in: 0...1) < chance else { return }
         let radius = fullyStitched ? Double.random(in: 3.5...6) : Double.random(in: 1.2...2.6) * (0.6 + meter)
         addPatch(x: Double.random(in: -5...5), z: z, radius: radius, withStitch: false, growTime: 0.01)
     }
 
-    private func addPatch(x: Double, z: Double, radius: Double, withStitch: Bool, growTime: Double) {
+    func addPatch(x: Double, z: Double, radius: Double, withStitch: Bool, growTime: Double) {
         let variant = Int.random(in: 0...3)
         let maskArt = art.patchMask(variant: variant)
         let mask = SKSpriteNode(texture: maskArt.texture, size: maskArt.size)
@@ -1366,7 +1376,7 @@ final class RunScene: SKScene {
     // MARK: Stitching
 
     /// Color floods in around a point as you collect thread.
-    private func stitchBurst(atX x: Double, z: Double) {
+    func stitchBurst(atX x: Double, z: Double) {
         addPatch(x: x + Double.random(in: -0.4...0.4), z: z + Double.random(in: 0.5...2.0),
                  radius: Double.random(in: 0.9...1.4), withStitch: true, growTime: 0.25)
         if Double.random(in: 0...1) < 0.5 {
@@ -1381,14 +1391,14 @@ final class RunScene: SKScene {
         }
     }
 
-    private func colorize(_ thing: Thing) {
+    func colorize(_ thing: Thing) {
         guard case .scenery(let kind, let variant) = thing.kind, !thing.colored else { return }
         thing.colored = true
         thing.sprite.texture = sceneryArt(kind, variant: variant, colored: true).texture
         thing.popTime = 0
     }
 
-    private func worldFullyStitched() {
+    func worldFullyStitched() {
         fullyStitched = true
         audio.play(.stitchFull)
         haptics.success()
@@ -1408,11 +1418,16 @@ final class RunScene: SKScene {
 
     // MARK: Collisions
 
-    private func checkCollisions() {
+    func checkCollisions() {
         let playerTop = playerY + (slideTimer > 0 ? 0.45 : 1.0)
 
-        for thing in things where !thing.resolved {
+        let flying = planeTimer > 0 || foldTimer > 0
+        for thing in things where !thing.resolved && !thing.retired {
             if case .scenery = thing.kind {
+                thing.resolved = true
+                continue
+            }
+            if case .gate = thing.kind {
                 thing.resolved = true
                 continue
             }
@@ -1426,7 +1441,10 @@ final class RunScene: SKScene {
             if passing { thing.resolved = true }
 
             var reach = 0.55
-            if case .spool = thing.kind, monster.ability == .sticky { reach = 1.55 }
+            if case .spool = thing.kind {
+                if monster.ability == .sticky { reach = 1.55 }
+                if magnetTimer > 0 { reach = 3 }
+            }
             guard abs(thing.x - playerX) < reach else {
                 if passing, thing.isHazard { checkCloseCall(thing) }
                 continue
@@ -1434,16 +1452,17 @@ final class RunScene: SKScene {
 
             switch thing.kind {
             case .spool:
-                if abs((playerY + 0.5) - thing.y) < 0.5 {
+                if abs((playerY + 0.5) - thing.y) < 0.5 || magnetTimer > 0 || planeTimer > 0 {
                     collect(thing)
                 }
             case .hazard(let hazard):
-                let hit: Bool
+                var hit: Bool
                 switch hazard {
                 case .low: hit = playerY < 0.5
                 case .overhead: hit = playerTop > 0.85
                 case .crate: hit = playerY < 1.4
                 }
+                if flying { hit = false }
                 if hit, hazard == .crate, monster.ability == .snip, slideTimer > 0 {
                     thing.resolved = true
                     snipThrough(thing)
@@ -1454,29 +1473,35 @@ final class RunScene: SKScene {
                     takeHit(from: thing)
                     if state != .running { return }
                 }
-            case .scenery:
+            case .scenery, .gate:
                 break
             }
         }
     }
 
-    private func checkCloseCall(_ thing: Thing) {
+    func checkCloseCall(_ thing: Thing) {
         let hazardLane = Int((thing.x / laneWidth).rounded())
         guard hazardLane == lastLaneFrom, elapsed - lastLaneChange < 0.35 else { return }
         audio.play(.closeCall)
         haptics.spool()
         timeScale = 0.4
         spools += 3
-        meter = min(1, meter + 0.03)
+        closeCalls += 1
+        gadgetCharge += 3
+        updateGadgetRing()
+        meter = min(1, meter + config.meterPerSpool * 2.5)
         popText("Close call! +3", size: 24, color: .white, at: playerScreenPoint(offsetY: 120), rise: 50, life: 0.9)
     }
 
-    private func collect(_ thing: Thing) {
-        thing.resolved = true
+    func collect(_ thing: Thing) {
         let point = screenPoint(ofWorld: thing.sprite.position)
-        thing.sprite.removeFromParent()
-        spools += 1
+        retire(thing)
         streak += 1
+        // Gobbler's feast: during a streak of 10 or more, every spool counts double.
+        let worth = monster.ability == .feast && streak >= 10 ? 2 : 1
+        spools += worth
+        gadgetCharge += worth
+        updateGadgetRing()
         bestStreak = max(bestStreak, streak)
         streakTimer = 1.4
         audio.chime(step: min(streak - 1, 8))
@@ -1489,15 +1514,26 @@ final class RunScene: SKScene {
         }
 
         let before = meter
-        meter = min(1, meter + 0.012)
+        meter = min(1, meter + config.meterPerSpool * Double(worth))
         stitchBurst(atX: thing.x, z: max(0.5, thing.z))
         if before < 1 && meter >= 1 && !fullyStitched {
             worldFullyStitched()
         }
     }
 
-    private func takeHit(from thing: Thing) {
+    func takeHit(from thing: Thing) {
         guard invulnerable <= 0 else { return }
+        if shieldActive {
+            shieldActive = false
+            invulnerable = 0.9
+            audio.play(.closeCall)
+            haptics.lane()
+            shake(strength: 5)
+            confettiBurst(at: screenPoint(ofWorld: thing.sprite.position))
+            retire(thing)
+            popText("Shield!", size: 26, color: Palette.stitchGold, at: playerScreenPoint(offsetY: 130), rise: 40, life: 0.9)
+            return
+        }
         if monster.ability == .shrug && !shrugUsed {
             shrugUsed = true
             invulnerable = 0.9
@@ -1506,7 +1542,7 @@ final class RunScene: SKScene {
             haptics.lane()
             shake(strength: 5)
             let point = screenPoint(ofWorld: thing.sprite.position)
-            thing.sprite.removeFromParent()
+            retire(thing)
             confettiBurst(at: point)
             popText("Shrugged it off!", size: 24, color: .white, at: playerScreenPoint(offsetY: 130), rise: 40, life: 0.9)
             return
@@ -1526,7 +1562,7 @@ final class RunScene: SKScene {
 
         // The hazard bursts into paper scraps.
         let point = screenPoint(ofWorld: thing.sprite.position)
-        thing.sprite.removeFromParent()
+        retire(thing)
         confettiBurst(at: point)
         flash.removeAllActions()
         flash.color = .white
@@ -1548,7 +1584,7 @@ final class RunScene: SKScene {
 
     // MARK: Actions
 
-    private func moveLane(_ direction: Int) {
+    func moveLane(_ direction: Int) {
         let newLane = max(-1, min(1, laneIndex + direction))
         guard newLane != laneIndex else {
             shake(strength: 4)
@@ -1564,19 +1600,19 @@ final class RunScene: SKScene {
         haptics.lane()
     }
 
-    private func jump() {
+    func jump() {
         guard playerY <= 0.0001 && velocityY <= 0 else {
             jumpBuffer = jumpBufferTime
             return
         }
         slideTimer = 0
-        velocityY = tuning.jumpVelocity
+        velocityY = tuning.jumpVelocity * (monster.ability == .bounce ? 1.15 : 1)
         playerY = 0.0001
         audio.play(.jump, volume: 0.7)
         haptics.jump()
     }
 
-    private func swipeDown() {
+    func swipeDown() {
         if playerY > 0.0001 {
             velocityY = -tuning.jumpVelocity * 1.6
         } else {
@@ -1586,7 +1622,7 @@ final class RunScene: SKScene {
         }
     }
 
-    private func landed() {
+    func landed() {
         landSquash = landSquashTime
         if state == .running {
             audio.play(.land, volume: 0.6)
@@ -1604,23 +1640,28 @@ final class RunScene: SKScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard trackedTouch == nil, let touch = touches.first else { return }
 
+        let point = touch.location(in: self)
         switch state {
-        case .title:
-            if handlePickerTap(at: touch.location(in: self)) { return }
-            startRun()
+        case .title, .menu:
+            _ = handleMenuTap(at: point)
             return
         case .over:
-            if clock - overAt > 0.8 { startRun() }
+            if clock - overAt > 0.6 { _ = handleMenuTap(at: point) }
+            return
+        case .story:
+            story?.tap(at: point)
+            return
+        case .celebrating:
             return
         case .paused:
-            handlePausedTap(at: touch.location(in: self))
+            handlePausedTap(at: point)
             return
         case .running:
-            let point = touch.location(in: self)
             if hud.alpha > 0.5, hypot(point.x - pauseButton.position.x, point.y - pauseButton.position.y) < 34 {
                 pauseGame()
                 return
             }
+            if tryFireGadget(at: point) { return }
         }
 
         trackedTouch = touch
@@ -1639,7 +1680,8 @@ final class RunScene: SKScene {
         didSwipe = true
         touchStart = point
         if abs(dx) > abs(dy) {
-            let dir = dx > 0 ? 1 : -1
+            var dir = dx > 0 ? 1 : -1
+            if config.rule == .mirror { dir = -dir }
             if dir != lastSwipeDir {
                 moveLane(dir)
                 lastSwipeDir = dir
@@ -1665,13 +1707,13 @@ final class RunScene: SKScene {
 
     // MARK: Effects
 
-    private func playerScreenPoint(offsetY: CGFloat) -> CGPoint {
+    func playerScreenPoint(offsetY: CGFloat) -> CGPoint {
         let world = playerNode.position
         let point = screenPoint(ofWorld: world)
         return CGPoint(x: point.x, y: point.y + offsetY)
     }
 
-    private func shake(strength: CGFloat) {
+    func shake(strength: CGFloat) {
         camRig.removeAction(forKey: "shake")
         let base = camRig.position
         let s = strength
@@ -1683,7 +1725,7 @@ final class RunScene: SKScene {
         ]), withKey: "shake")
     }
 
-    private func thunderFlash(strength: Double) {
+    func thunderFlash(strength: Double) {
         audio.play(.thunder, volume: Float(min(1, 0.4 + strength)))
         flash.removeAllActions()
         flash.color = UIColor(hex: 0xE8E9FF)
@@ -1705,13 +1747,14 @@ final class RunScene: SKScene {
         ]))
     }
 
-    private func popText(_ text: String, size fontSize: CGFloat, color: UIColor, at point: CGPoint, rise: CGFloat, life: Double) {
+    func popText(_ text: String, size fontSize: CGFloat, color: UIColor, at point: CGPoint, rise: CGFloat, life: Double,
+                 parent: SKNode? = nil) {
         let textArt = art.text(text, size: fontSize, fill: color)
         let sprite = SKSpriteNode(texture: textArt.texture, size: textArt.size)
         sprite.position = point
         sprite.setScale(0.4)
-        sprite.zPosition = 10
-        fxRoot.addChild(sprite)
+        sprite.zPosition = parent == nil ? 10 : 60
+        (parent ?? fxRoot).addChild(sprite)
         sprite.run(.sequence([
             .scale(to: 1.15, duration: 0.12),
             .scale(to: 1, duration: 0.08),
@@ -1720,7 +1763,7 @@ final class RunScene: SKScene {
         ]))
     }
 
-    private func emitter(texture: SKTexture, at point: CGPoint, count: Int, color: UIColor,
+    func emitter(texture: SKTexture, at point: CGPoint, count: Int, color: UIColor,
                          speed: CGFloat, spread: CGFloat, angle: CGFloat, life: CGFloat,
                          gravity: CGFloat, scale: CGFloat) -> SKEmitterNode {
         let e = SKEmitterNode()
@@ -1747,19 +1790,19 @@ final class RunScene: SKScene {
         return e
     }
 
-    private func sparkleBurst(at point: CGPoint, count: Int, spread: CGFloat, speed: CGFloat) {
+    func sparkleBurst(at point: CGPoint, count: Int, spread: CGFloat, speed: CGFloat) {
         _ = emitter(texture: art.spark.texture, at: point, count: count, color: Palette.stitchGold,
                     speed: speed, spread: spread, angle: .pi / 2, life: 0.5, gravity: -200, scale: 0.6)
     }
 
-    private func confettiBurst(at point: CGPoint) {
+    func confettiBurst(at point: CGPoint) {
         for color in [UIColor.white, UIColor(hex: 0xD2D4DB), UIColor(hex: 0xFF8FA3)] {
             _ = emitter(texture: art.scrap.texture, at: point, count: 14, color: color,
                         speed: 320, spread: .pi * 0.9, angle: .pi / 2, life: 0.9, gravity: -700, scale: 1.1)
         }
     }
 
-    private func dustPuff() {
+    func dustPuff() {
         guard let ground = project(x: playerX, z: 0) else { return }
         let point = screenPoint(ofWorld: ground.point)
         _ = emitter(texture: art.puff.texture, at: point, count: 8, color: .white,
@@ -1768,8 +1811,9 @@ final class RunScene: SKScene {
 
     // MARK: Rendering
 
-    private func render(dt: Double) {
+    func render(dt: Double) {
         guard unitK > 0, dashes.count == dashesPerDivider * 2 else { return }
+        lastRenderDt = dt
 
         PaperGround.setDistance(texturedGray, distance)
         PaperGround.setDistance(texturedColor, distance)
@@ -1819,7 +1863,8 @@ final class RunScene: SKScene {
         }
 
         // Hazards, spools, scenery.
-        for thing in things {
+        let fogDay = config.rule == .fog && state != .title && state != .menu
+        for thing in things where !thing.retired {
             guard let p = project(x: thing.x, z: thing.z, y: thing.y) else {
                 thing.sprite.isHidden = true
                 continue
@@ -1829,6 +1874,10 @@ final class RunScene: SKScene {
             sprite.position = p.point
             sprite.zPosition = CGFloat((spawnZ + 10 - thing.z) * 5)
             sprite.alpha = CGFloat(max(0, min(1, (spawnZ + 2 - thing.z) / 6)))
+            if fogDay, case .scenery = thing.kind {} else if fogDay {
+                // Fog Day: things loom out of the mist only when they're close.
+                sprite.alpha = min(sprite.alpha, CGFloat(max(0, min(1, (19 - thing.z) / 7))))
+            }
             var xScale = p.scale * thing.worldScale
             var yScale = xScale
 
@@ -1852,17 +1901,20 @@ final class RunScene: SKScene {
                     yScale *= CGFloat(bounce)
                     if t >= 1 { thing.popTime = -1 }
                 }
+            case .gate:
+                break
             }
             sprite.xScale = xScale
             sprite.yScale = yScale
         }
 
         renderPlayer()
+        renderRival()
         renderCamera()
         renderSkyAndStorm(dt: dt)
     }
 
-    private func renderPlayer() {
+    func renderPlayer() {
         guard let ground = project(x: playerX, z: 0),
               let lifted = project(x: playerX, z: 0, y: playerY) else { return }
 
@@ -1944,6 +1996,27 @@ final class RunScene: SKScene {
             brambleSprite.xScale = 1
         }
 
+        // Blinking and breathing while facing the camera.
+        if !running && currentPose == "\(id)-front" {
+            frontBlinkTimer -= lastRenderDt
+            if frontBlinkTimer < -0.12 { frontBlinkTimer = Double.random(in: 2...5) }
+            let blinkName = "\(id)-blink"
+            if poseTextures[blinkName] == nil, let image = UIImage(named: blinkName) {
+                let texture = SKTexture(image: image)
+                texture.filteringMode = .linear
+                poseTextures[blinkName] = (texture, image.size)
+            }
+            if let blink = poseTextures[blinkName], let open = poseTextures[currentPose] {
+                brambleSprite.texture = frontBlinkTimer < 0 ? blink.texture : open.texture
+            }
+            rig.yScale *= 1 + 0.025 * CGFloat(sin(clock * 2.4))
+        }
+        planeSprite.isHidden = planeTimer <= 0 || planeSprite.texture == nil
+        planeSprite.position = CGPoint(x: 0, y: -6)
+        if nightShade.alpha > 0 {
+            nightShade.position = screenPoint(ofWorld: CGPoint(x: lifted.point.x, y: lifted.point.y + 50 * lifted.scale))
+        }
+
         if invulnerable > 0 && state == .running {
             playerNode.alpha = Int(invulnerable * 14) % 2 == 0 ? 0.35 : 1
         } else {
@@ -1951,7 +2024,7 @@ final class RunScene: SKScene {
         }
     }
 
-    private func renderCamera() {
+    func renderCamera() {
         let follow = CGFloat(playerX) * (unitK / CGFloat(camBack)) * 0.3
         let lean = CGFloat(laneToX - playerX) * 0.035
         let speedT = CGFloat(max(0, min(1, (runSpeed - tuning.startSpeed) / max(tuning.endSpeed - tuning.startSpeed, 0.1))))
@@ -1962,7 +2035,7 @@ final class RunScene: SKScene {
         camRig.setScale(1 + 0.05 * speedT)
     }
 
-    private func renderSkyAndStorm(dt: Double) {
+    func renderSkyAndStorm(dt: Double) {
         let m = CGFloat(fullyStitched ? 1 : meter)
         let colorAmount = min(1, m * 1.2)
         skyBlue.alpha = colorAmount
@@ -2033,13 +2106,24 @@ final class RunScene: SKScene {
         }
     }
 
-    private func updateHUD() {
-        let remaining = max(0, Int((tuning.runLength - elapsed).rounded(.up)))
-        if remaining != shownSeconds {
-            shownSeconds = remaining
-            let text = art.text("\(remaining / 60):\(String(format: "%02d", remaining % 60))", size: 28, fill: .white)
+    func updateHUD() {
+        // Timed runs count down; Endless shows how far you've run.
+        let shown = config.length.isFinite ? max(0, Int((config.length - elapsed).rounded(.up))) : Int(distance)
+        if shown != shownSeconds {
+            shownSeconds = shown
+            let words = config.length.isFinite ? "\(shown / 60):\(String(format: "%02d", shown % 60))" : "\(shown) m"
+            let text = art.text(words, size: 28, fill: .white)
             timerSprite.texture = text.texture
             timerSprite.size = text.size
+            if !config.length.isFinite { timerPill.size.width = max(116, text.size.width + 30) }
+        }
+        if case .race(let holiday) = mode, rivalCount != shownRival {
+            shownRival = rivalCount
+            let text = art.text("\(holiday.rivalName): \(rivalCount)", size: 17, fill: UIColor(hex: 0xFFB27A))
+            rivalLabel.texture = text.texture
+            rivalLabel.size = text.size
+            rivalLabel.anchorPoint = CGPoint(x: 0, y: 0.5)
+            rivalLabel.position.x = 16
         }
         if spools != shownSpools {
             let grew = spools > shownSpools && shownSpools >= 0
@@ -2063,7 +2147,7 @@ final class RunScene: SKScene {
 
     /// Blinks, squints and glares. The storm narrows its eyes and turns red as it closes in,
     /// widens them when it lands a hit, gloats when it catches you, and shuts them when you win.
-    private func updateStormEyes(closeness: CGFloat, dt: Double) {
+    func updateStormEyes(closeness: CGFloat, dt: Double) {
         guard let eyes = stormGlare else { return }
         let blinkLength = 0.22
         if eyeBlinkPhase >= 0 {
@@ -2103,108 +2187,10 @@ final class RunScene: SKScene {
         eyes.alpha = 0.88 + 0.12 * CGFloat(sin(clock * (4 + Double(closeness) * 8)))
     }
 
-    // MARK: Monster picker
-
-    /// A paper card on the title screen: the monster, its passive, and arrows to switch.
-    private func buildPicker(aboveY bottom: CGFloat) {
-        pickerNode?.removeFromParent()
-        let w = size.width
-        let cardW = min(w - 32, 340)
-        let cardH = cardW * 300.0 / 720.0
-        pickerWidth = cardW
-        let node = SKNode()
-        node.position = CGPoint(x: w / 2, y: bottom + cardH / 2)
-        node.zPosition = 2
-        overlay.addChild(node)
-        pickerNode = node
-
-        if let paper = imageSprite("ui-button") {
-            paper.size = CGSize(width: cardW, height: cardH)
-            node.addChild(paper)
-        }
-
-        // Arrows on both ends.
-        for side in [CGFloat(-1), 1] {
-            let path = CGMutablePath()
-            path.move(to: CGPoint(x: side * 9, y: 0))
-            path.addLine(to: CGPoint(x: -side * 6, y: 11))
-            path.addLine(to: CGPoint(x: -side * 6, y: -11))
-            path.closeSubpath()
-            let arrow = SKShapeNode(path: path)
-            arrow.fillColor = Palette.ink
-            arrow.strokeColor = .clear
-            arrow.position = CGPoint(x: side * (cardW / 2 - 26), y: 0)
-            arrow.zPosition = 1
-            node.addChild(arrow)
-        }
-
-        // The monster, facing you.
-        let thumbBox = CGSize(width: cardW * 0.27, height: cardH * 0.76)
-        let thumbX = -cardW / 2 + 44 + thumbBox.width / 2
-        if let thumb = imageSprite("\(monster.id)-front") {
-            let scale = min(thumbBox.width / thumb.size.width, thumbBox.height / thumb.size.height)
-            thumb.size = CGSize(width: thumb.size.width * scale, height: thumb.size.height * scale)
-            thumb.position = CGPoint(x: thumbX, y: 0)
-            thumb.zPosition = 1
-            node.addChild(thumb)
-            thumb.setScale(0.8)
-            thumb.run(.scale(to: 1, duration: 0.12))
-        }
-
-        // Name, passive, and best score.
-        let textX = thumbX + thumbBox.width / 2 + 8
-        let name = art.text(monster.name, size: min(23, cardW * 0.07), fill: Palette.stitchGold)
-        let nameSprite = SKSpriteNode(texture: name.texture, size: name.size)
-        nameSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
-        nameSprite.position = CGPoint(x: textX - 4, y: cardH * 0.16)
-        nameSprite.zPosition = 1
-        node.addChild(nameSprite)
-
-        let passive = art.text(monster.passive, size: min(12, cardW * 0.036), fill: .white, style: .body)
-        let passiveSprite = SKSpriteNode(texture: passive.texture, size: passive.size)
-        passiveSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
-        passiveSprite.position = CGPoint(x: textX - 2, y: -cardH * 0.07)
-        passiveSprite.zPosition = 1
-        node.addChild(passiveSprite)
-
-        let best = UserDefaults.standard.integer(forKey: "bestSpools")
-        let index = Monster.selectedIndex
-        let footer = best > 0 ? "\(index + 1) of \(Monster.roster.count)  \u{00B7}  Best: \(best)" : "\(index + 1) of \(Monster.roster.count)"
-        let footerArt = art.text(footer, size: min(11, cardW * 0.032), fill: .white, style: .body)
-        let footerSprite = SKSpriteNode(texture: footerArt.texture, size: footerArt.size)
-        footerSprite.anchorPoint = CGPoint(x: 0, y: 0.5)
-        footerSprite.position = CGPoint(x: textX - 2, y: -cardH * 0.26)
-        footerSprite.zPosition = 1
-        node.addChild(footerSprite)
-
-        // Long names or lines shrink to stay clear of the right arrow.
-        let maxWidth = cardW / 2 - 40 - textX
-        for sprite in [nameSprite, passiveSprite, footerSprite] where sprite.size.width > maxWidth {
-            sprite.setScale(maxWidth / sprite.size.width)
-        }
-    }
-
-    /// Arrows switch monsters; tapping the card goes to the next one. Returns true when the tap was used.
-    private func handlePickerTap(at point: CGPoint) -> Bool {
-        guard let node = pickerNode else { return false }
-        let cardH = pickerWidth * 300.0 / 720.0
-        let dx = point.x - node.position.x
-        let dy = point.y - node.position.y
-        guard abs(dx) < pickerWidth / 2 + 10, dy > -cardH / 2, dy < cardH / 2 + 10 else { return false }
-        let step = dx < -pickerWidth * 0.32 ? -1 : 1
-        Monster.selectedIndex = Monster.selectedIndex + step
-        monster = Monster.roster[Monster.selectedIndex]
-        currentPose = ""
-        audio.chime(step: Monster.selectedIndex % 5)
-        haptics.lane()
-        buildPicker(aboveY: node.position.y - cardH / 2)
-        return true
-    }
-
     /// Snipjaw slices a box in half instead of crashing into it.
-    private func snipThrough(_ thing: Thing) {
+    func snipThrough(_ thing: Thing) {
         let point = screenPoint(ofWorld: thing.sprite.position)
-        thing.sprite.removeFromParent()
+        retire(thing)
         confettiBurst(at: point)
         audio.play(.closeCall)
         haptics.spool()
@@ -2213,7 +2199,7 @@ final class RunScene: SKScene {
     }
 
     /// Swaps the runner's picture, keeping the feet on the ground and the body a steady size.
-    private func setPose(_ name: String, height: CGFloat) {
+    func setPose(_ name: String, height: CGFloat) {
         guard name != currentPose else { return }
         let entry: (texture: SKTexture, size: CGSize)
         if let cached = poseTextures[name] {
@@ -2238,7 +2224,7 @@ final class RunScene: SKScene {
         if state == .running { pauseGame() }
     }
 
-    private func pauseGame() {
+    func pauseGame() {
         guard state == .running else { return }
         state = .paused
         resumeCountdown = 0
@@ -2246,7 +2232,7 @@ final class RunScene: SKScene {
         audio.setMusic(playing: false)
         haptics.lane()
 
-        overlay.removeAllChildren()
+        clearScreen()
         let w = size.width
         let h = size.height
         let dim = SKSpriteNode(color: UIColor(white: 0, alpha: 0.4), size: size)
@@ -2284,7 +2270,7 @@ final class RunScene: SKScene {
         card.run(.scale(to: 1, duration: 0.15))
     }
 
-    private func handlePausedTap(at point: CGPoint) {
+    func handlePausedTap(at point: CGPoint) {
         guard resumeCountdown <= 0 else { return }
         for node in nodes(at: point) {
             var current: SKNode? = node
@@ -2294,7 +2280,13 @@ final class RunScene: SKScene {
                     return
                 }
                 if candidate.name == "quit" {
-                    showTitle()
+                    // Quitting your first daily run still uses it up, so nobody can fish for a lucky start.
+                    if case .daily(let storm) = mode, Progress.shared.data.dailyScores[storm.key] == nil {
+                        state = .running
+                        concludeRun(caught: false, finished: false)
+                    } else {
+                        showTitle()
+                    }
                     return
                 }
                 current = candidate.parent
@@ -2302,7 +2294,7 @@ final class RunScene: SKScene {
         }
     }
 
-    private func resumeGame() {
+    func resumeGame() {
         fadeOverlay()
         haptics.lane()
         resumeCountdown = 2.4
@@ -2310,7 +2302,7 @@ final class RunScene: SKScene {
     }
 
     /// 3, 2, 1, Go: gives the player a moment to get ready after a pause.
-    private func stepCountdown(_ dt: Double) {
+    func stepCountdown(_ dt: Double) {
         guard resumeCountdown > 0 else { return }
         resumeCountdown -= dt
         let number = Int(ceil(resumeCountdown / 0.8))
@@ -2328,14 +2320,14 @@ final class RunScene: SKScene {
     }
 
     /// Sizes the paper pill to wrap the spool icon and count.
-    private func fitSpoolPill() {
+    func fitSpoolPill() {
         let left = spoolIcon.position.x - 14
         let right = size.width - 26
         spoolPill.size = CGSize(width: (right - left) + 28, height: 37)
         spoolPill.position.x = (left + right) / 2
     }
 
-    private func easeOutBack(_ t: Double) -> Double {
+    func easeOutBack(_ t: Double) -> Double {
         let c1 = 1.70158
         let c3 = c1 + 1
         return 1 + c3 * pow(t - 1, 3) + c1 * pow(t - 1, 2)
