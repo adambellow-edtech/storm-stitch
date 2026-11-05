@@ -200,6 +200,57 @@ extension RunScene {
         gateThing = gate
     }
 
+    /// A lightning strike inside the storm wall: a crack, a flash, a jolt, and jagged bolts.
+    func lightningStrike(power: Int) {
+        guard lightningCooldown <= 0 else { return }
+        lightningCooldown = 1.2
+        audio.play(.crack, volume: min(1, 0.55 + Float(power) * 0.15))
+        thunderFlash(strength: 0.35 + Double(power) * 0.15)
+        shake(strength: CGFloat(3 + power * 3))
+        haptics.hit()
+        let top = (stormArt?.frame.maxY ?? size.height * 0.3) - 10
+        let bottom = max(0, top - size.height * (0.12 + CGFloat(power) * 0.04))
+        for _ in 0..<max(1, power) {
+            let x = CGFloat.random(in: size.width * 0.12...size.width * 0.88)
+            let bolt = SKShapeNode(path: boltPath(from: CGPoint(x: x, y: top), to: bottom))
+            bolt.strokeColor = UIColor(hex: 0xF4F0FF)
+            bolt.lineWidth = 3 + CGFloat(power)
+            bolt.glowWidth = 6 + CGFloat(power) * 2
+            bolt.lineCap = .round
+            bolt.lineJoin = .round
+            bolt.zPosition = 1.5
+            stormRoot.addChild(bolt)
+            bolt.run(.sequence([
+                .fadeAlpha(to: 0.2, duration: 0.05),
+                .fadeAlpha(to: 1, duration: 0.04),
+                .fadeOut(withDuration: 0.3),
+                .removeFromParent()
+            ]))
+        }
+    }
+
+    /// A jagged bolt with one fork, from a point in the cloud down to a height.
+    func boltPath(from start: CGPoint, to bottomY: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: start)
+        var point = start
+        let steps = 7
+        let drop = (start.y - bottomY) / CGFloat(steps)
+        var forkPoint = start
+        for i in 1...steps {
+            point = CGPoint(x: point.x + CGFloat.random(in: -22...22), y: start.y - drop * CGFloat(i))
+            path.addLine(to: point)
+            if i == 3 { forkPoint = point }
+        }
+        path.move(to: forkPoint)
+        var fork = forkPoint
+        for _ in 0..<3 {
+            fork = CGPoint(x: fork.x + CGFloat.random(in: 8...26) * (Bool.random() ? 1 : -1), y: fork.y - drop * 0.8)
+            path.addLine(to: fork)
+        }
+        return path
+    }
+
     /// Fog Day pulls the fog in close; every other run keeps it far off.
     func applyFog() {
         let fog = config.rule == .fog
@@ -579,7 +630,7 @@ extension RunScene {
             rivalSprite.size = CGSize(width: 85, height: 85 * back.size.height / back.size.width)
         }
         rivalSprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
-        let hasArt = UIImage(named: "\(holiday.rivalID)-back") != nil
+        let hasArt = artImage("\(holiday.rivalID)-back") != nil
         rivalSprite.color = holiday == .harvest ? UIColor(hex: 0xC2551F) : UIColor(hex: 0x8A5A2B)
         rivalSprite.colorBlendFactor = hasArt ? 0 : 0.55
         rivalSprite.isHidden = false
@@ -637,7 +688,7 @@ extension RunScene {
         guard let holiday else { return }
         for (i, name) in holiday.particles.enumerated() {
             let texture: SKTexture
-            if let image = UIImage(named: name) {
+            if let image = artImage(name) {
                 texture = SKTexture(image: image)
             } else {
                 texture = holiday == .harvest ? art.leaf(variant: i).texture : art.puff.texture
@@ -674,7 +725,7 @@ extension RunScene {
             .scaleY(to: base * 1.03, duration: 1.1),
             .scaleY(to: base * 0.985, duration: 1.1)
         ])), withKey: "breathe")
-        guard let blinkImage = UIImage(named: "\(id)-blink"), let open = sprite.texture else { return }
+        guard let blinkImage = artImage("\(id)-blink"), let open = sprite.texture else { return }
         let closed = SKTexture(image: blinkImage)
         sprite.run(.repeatForever(.sequence([
             .wait(forDuration: 3, withRange: 3),

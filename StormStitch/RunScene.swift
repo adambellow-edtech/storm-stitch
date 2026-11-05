@@ -215,6 +215,9 @@ final class RunScene: SKScene {
     var shownSeconds = -1
     var shownSpools = -1
     var nextThunder = 6.0
+    /// How close the storm has come this run (0 far ... 3 almost on you); crossing up a band cracks lightning.
+    var stormBand = 0
+    var lightningCooldown = 0.0
 
     // MARK: Modes, gadgets and menus
 
@@ -456,8 +459,8 @@ final class RunScene: SKScene {
             stormEyes.append(eye)
         }
 
-        let hasEyeLayer = UIImage(named: "storm-wall-noeyes") != nil && UIImage(named: "storm-eyes") != nil
-        if let image = UIImage(named: hasEyeLayer ? "storm-wall-noeyes" : "storm-wall") {
+        let hasEyeLayer = artImage("storm-wall-noeyes") != nil && artImage("storm-eyes") != nil
+        if let image = artImage(hasEyeLayer ? "storm-wall-noeyes" : "storm-wall") {
             let texture = SKTexture(image: image)
             texture.filteringMode = .linear
 
@@ -476,7 +479,7 @@ final class RunScene: SKScene {
             stormRoot.addChild(sprite)
             stormArt = sprite
 
-            if hasEyeLayer, let eyeImage = UIImage(named: "storm-eyes") {
+            if hasEyeLayer, let eyeImage = artImage("storm-eyes") {
                 let eyeTexture = SKTexture(image: eyeImage)
                 eyeTexture.filteringMode = .linear
                 let eyes = SKSpriteNode(texture: eyeTexture)
@@ -533,7 +536,7 @@ final class RunScene: SKScene {
 
         // Paper pause button, top left.
         let pausePaper = SKSpriteNode()
-        if let image = UIImage(named: "ui-pill") {
+        if let image = artImage("ui-pill") {
             pausePaper.texture = SKTexture(image: image)
         } else {
             pausePaper.color = UIColor(white: 1, alpha: 0.85)
@@ -561,7 +564,7 @@ final class RunScene: SKScene {
 
         // Paper pills behind the timer and the spool count.
         for pill in [timerPill, spoolPill] {
-            if let image = UIImage(named: "ui-pill") {
+            if let image = artImage("ui-pill") {
                 pill.texture = SKTexture(image: image)
             } else {
                 pill.color = UIColor(white: 1, alpha: 0.85)
@@ -616,7 +619,7 @@ final class RunScene: SKScene {
         }
 
         // Illustrated backdrop replaces the code-drawn sky, sun, clouds and hills when present.
-        if let grayImage = UIImage(named: "backdrop-gray"), let colorImage = UIImage(named: "backdrop-color") {
+        if let grayImage = artImage("backdrop-gray"), let colorImage = artImage("backdrop-color") {
             if backdropGray == nil {
                 let gray = SKSpriteNode(texture: SKTexture(image: grayImage))
                 gray.zPosition = -190
@@ -700,7 +703,7 @@ final class RunScene: SKScene {
         stormBack.position.x = w / 2
         stormFront.position.x = w / 2
         stormScraps?.particlePositionRange = CGVector(dx: w, dy: 10)
-        if let stormArt, let image = UIImage(named: "storm-wall") {
+        if let stormArt, let image = artImage("storm-wall") {
             let artWidth = w * 1.45
             let artHeight = artWidth * image.size.height / image.size.width
             stormArt.setScale(1)
@@ -787,7 +790,7 @@ final class RunScene: SKScene {
 
     /// A sprite from a bundled PNG at its native pixel size; callers set the display size.
     func imageSprite(_ name: String) -> SKSpriteNode? {
-        guard let image = UIImage(named: name) else { return nil }
+        guard let image = artImage(name) else { return nil }
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         return SKSpriteNode(texture: texture, size: image.size)
@@ -887,6 +890,9 @@ final class RunScene: SKScene {
         timeScale = 1
         hitStop = 0
         nextThunder = 6
+        stormBand = 0
+        lightningCooldown = 0
+        removeAction(forKey: "defeatAudio")
 
         laneIndex = 0
         playerX = 0
@@ -976,7 +982,22 @@ final class RunScene: SKScene {
     func endRun(caught: Bool) {
         eyeGloat = true
         audio.setMusic(playing: false)
-        audio.play(.gameOver)
+        audio.play(.gameOver, volume: 0.6)
+        // The Shredder wins: one last strike, an evil laugh, then the defeat sting.
+        lightningCooldown = 0
+        lightningStrike(power: 3)
+        run(.sequence([
+            .wait(forDuration: 0.35),
+            .run { [weak self] in
+                guard let self, self.state != .running else { return }
+                self.audio.play(.evilLaugh)
+            },
+            .wait(forDuration: 2.1),
+            .run { [weak self] in
+                guard let self, self.state != .running else { return }
+                self.audio.play(.defeat, volume: 0.8)
+            }
+        ]), withKey: "defeatAudio")
         haptics.gameOver()
         concludeRun(caught: caught, finished: false)
     }
@@ -1079,10 +1100,23 @@ final class RunScene: SKScene {
         }
 
         let closeness = 1 - stormDistance / max(tuning.stormStart, 0.1)
+        lightningCooldown -= dt
+        // The bigger the storm gets, the more it crackles: crossing into a closer band strikes lightning.
+        let band = closeness > 0.85 ? 3 : closeness > 0.6 ? 2 : closeness > 0.35 ? 1 : 0
+        if band > stormBand {
+            lightningStrike(power: band)
+        }
+        if band > stormBand || closeness < [0, 0.27, 0.52, 0.77][stormBand] {
+            stormBand = band
+        }
         nextThunder -= dt
         if nextThunder <= 0 {
             nextThunder = Double.random(in: 5...10) * (1 - closeness * 0.6)
-            thunderFlash(strength: 0.25 + closeness * 0.4)
+            if closeness > 0.5 {
+                lightningStrike(power: closeness > 0.8 ? 2 : 1)
+            } else {
+                thunderFlash(strength: 0.25 + closeness * 0.4)
+            }
         }
 
         audio.setIntensity(Float(0.3 + t * 0.5 + closeness * 0.4))
@@ -1207,7 +1241,7 @@ final class RunScene: SKScene {
     var illustratedCache: [String: Art] = [:]
     func illustrated(_ name: String, width: CGFloat) -> Art? {
         if let cached = illustratedCache[name] { return cached }
-        guard let image = UIImage(named: name), image.size.width > 0 else { return nil }
+        guard let image = artImage(name), image.size.width > 0 else { return nil }
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         let art = Art(texture: texture, size: CGSize(width: width, height: width * image.size.height / image.size.width))
@@ -2001,7 +2035,7 @@ final class RunScene: SKScene {
             frontBlinkTimer -= lastRenderDt
             if frontBlinkTimer < -0.12 { frontBlinkTimer = Double.random(in: 2...5) }
             let blinkName = "\(id)-blink"
-            if poseTextures[blinkName] == nil, let image = UIImage(named: blinkName) {
+            if poseTextures[blinkName] == nil, let image = artImage(blinkName) {
                 let texture = SKTexture(image: image)
                 texture.filteringMode = .linear
                 poseTextures[blinkName] = (texture, image.size)
@@ -2205,7 +2239,7 @@ final class RunScene: SKScene {
         if let cached = poseTextures[name] {
             entry = cached
         } else {
-            guard let image = UIImage(named: name) else { return }
+            guard let image = artImage(name) else { return }
             let texture = SKTexture(image: image)
             texture.filteringMode = .linear
             entry = (texture, image.size)

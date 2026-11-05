@@ -57,7 +57,7 @@ enum Share {
             let ctx = context.cgContext
             UIColor(hex: 0x8FD3FF).setFill()
             ctx.fill(CGRect(origin: .zero, size: size))
-            if let art = UIImage(named: "title-card") {
+            if let art = artImage("title-card") {
                 let scale = size.width / art.size.width
                 art.draw(in: CGRect(x: 0, y: 0, width: size.width, height: art.size.height * scale))
             }
@@ -67,7 +67,7 @@ enum Share {
             ctx.setFillColor(UIColor(white: 0, alpha: 0.25).cgColor)
             ctx.addPath(UIBezierPath(roundedRect: panel.offsetBy(dx: 0, dy: 12), cornerRadius: 40).cgPath)
             ctx.fillPath()
-            if let paper = UIImage(named: "ui-card") {
+            if let paper = artImage("ui-card") {
                 paper.draw(in: panel)
             } else {
                 ctx.setFillColor(Palette.paper.cgColor)
@@ -75,7 +75,7 @@ enum Share {
                 ctx.fillPath()
             }
 
-            if let monster = UIImage(named: "\(monsterID)-front") {
+            if let monster = artImage("\(monsterID)-front") {
                 let h: CGFloat = 300
                 let w = h * monster.size.width / monster.size.height
                 monster.draw(in: CGRect(x: 130, y: panel.midY - h / 2, width: min(w, 300), height: h * min(w, 300) / w))

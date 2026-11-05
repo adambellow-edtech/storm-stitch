@@ -138,8 +138,8 @@ final class StoryPlayer: SKNode {
         node.addChild(background)
 
         // The picture, with a slow pan and zoom.
-        let illustrated = UIImage(named: panel.image)
-        let image = illustrated ?? UIImage(named: panel.fallback)
+        let illustrated = artImage(panel.image)
+        let image = illustrated ?? artImage(panel.fallback)
         let fillsScreen = illustrated != nil || panel.fallbackIsScene
         if let image {
             let picture = SKSpriteNode(texture: SKTexture(image: image))

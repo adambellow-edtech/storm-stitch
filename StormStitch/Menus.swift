@@ -99,7 +99,7 @@ extension RunScene {
             rim.lineWidth = 3
             node.addChild(rim)
         }
-        if let image = UIImage(named: icon) {
+        if let image = artImage(icon) {
             let sprite = SKSpriteNode(texture: SKTexture(image: image))
             let k = size * 0.6 / max(image.size.width, image.size.height)
             sprite.size = CGSize(width: image.size.width * k, height: image.size.height * k)

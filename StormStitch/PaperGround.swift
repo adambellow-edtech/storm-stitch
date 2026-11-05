@@ -16,8 +16,8 @@ enum PaperGround {
         let defaultRoad = colored ? "road-color" : "road-gray"
         let defaultGround = colored ? "ground-color" : "ground-gray"
         // Holiday textures replace the defaults when they're in the app.
-        let roadImage = roadName.flatMap { UIImage(named: $0) } ?? UIImage(named: defaultRoad)
-        let groundImage = groundName.flatMap { UIImage(named: $0) } ?? UIImage(named: defaultGround)
+        let roadImage = roadName.flatMap { artImage($0) } ?? artImage(defaultRoad)
+        let groundImage = groundName.flatMap { artImage($0) } ?? artImage(defaultGround)
         guard let roadImage, let groundImage else { return nil }
 
         let road = SKTexture(image: roadImage)

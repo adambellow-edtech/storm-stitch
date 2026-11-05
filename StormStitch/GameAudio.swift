@@ -7,6 +7,7 @@ final class GameAudio {
 
     enum SFX: CaseIterable {
         case jump, land, whoosh, hit, closeCall, stitchFull, gameOver, finish, start, thunder, stitch
+        case crack, evilLaugh, defeat
     }
 
     var musicOn = true {
@@ -208,6 +209,110 @@ final class GameAudio {
             lowpass += 0.025 * (noise.next() - lowpass)
             let env = min(1, t / 0.04) * exp(-t * 2.2)
             return Float(lowpass * env * 4)
+        }
+
+        buildStormSounds(noise: &noise)
+    }
+
+    /// Lightning crack, the Shredder's laugh and the defeat sting, all synthesized like the rest.
+    private func buildStormSounds(noise: inout NoiseSource) {
+        let twoPi = 2 * Double.pi
+        let sr = sampleRate
+
+        // A close lightning strike: a sharp white snap, a spray of crackles, then a deep rolling boom.
+        var snapLow = 0.0, rumble = 0.0, rumble2 = 0.0, crackle = 0.0
+        var noiseA = noise
+        buffers[.crack] = makeBuffer(1.4) { t in
+            let n = noiseA.next()
+            snapLow += 0.35 * (n - snapLow)
+            let snap = (n - snapLow) * exp(-t * 26) * 1.1
+            if noiseA.next() > 0.93 - 0.3 * exp(-t * 6) { crackle = noiseA.next() }
+            crackle *= 0.86
+            let sparks = crackle * exp(-t * 7) * 0.7
+            rumble += 0.018 * (n - rumble)
+            rumble2 += 0.006 * (rumble - rumble2)
+            let boom = (rumble * 4 + rumble2 * 7) * min(1, t / 0.06) * exp(-t * 1.9)
+            return Float(tanh((snap + sparks + boom) * 0.9))
+        }
+
+        // The Shredder laughs: six deep "HA"s that sink in pitch, through an "ah" vowel, with a slap echo.
+        struct Resonator {
+            var a1 = 0.0, a2 = 0.0, gain = 0.0, y1 = 0.0, y2 = 0.0
+            init(freq: Double, bandwidth: Double, sampleRate: Double) {
+                let r = exp(-Double.pi * bandwidth / sampleRate)
+                a1 = 2 * r * cos(2 * Double.pi * freq / sampleRate)
+                a2 = -r * r
+                gain = 1 - r
+            }
+            mutating func process(_ x: Double) -> Double {
+                let y = gain * x + a1 * y1 + a2 * y2
+                y2 = y1
+                y1 = y
+                return y
+            }
+        }
+        var f1 = Resonator(freq: 700, bandwidth: 110, sampleRate: sr)
+        var f2 = Resonator(freq: 1150, bandwidth: 130, sampleRate: sr)
+        var f3 = Resonator(freq: 2500, bandwidth: 200, sampleRate: sr)
+        var glottal = 0.0, glottalLow = 0.0, breath = 0.0
+        var noiseB = noise
+        let syllables: [(start: Double, length: Double, pitch: Double)] = [
+            (0.00, 0.22, 150), (0.27, 0.22, 140), (0.54, 0.22, 131),
+            (0.81, 0.22, 122), (1.08, 0.24, 113), (1.40, 0.70, 104)
+        ]
+        let laughLength = 2.5
+        let echoDelay = Int(0.19 * sr)
+        var history = [Double](repeating: 0, count: Int(laughLength * sr) + 1)
+        var index = 0
+        buffers[.evilLaugh] = makeBuffer(laughLength) { t in
+            var voiced = 0.0, aspiration = 0.0, pitch = 110.0
+            for syl in syllables where t >= syl.start && t < syl.start + syl.length + 0.05 {
+                let local = t - syl.start
+                let fall = 1 - 0.12 * local / syl.length
+                pitch = syl.pitch * fall
+                let attack = min(1, max(0, (local - 0.025) / 0.03))
+                let release = max(0, min(1, (syl.length - local) / 0.08 + 0.2))
+                voiced = attack * release
+                aspiration = max(0, 1 - local / 0.05)
+            }
+            // Gravelly growl: a little roughness on the pitch.
+            let growl = 1 + 0.04 * sin(twoPi * 33 * t)
+            glottal += pitch * growl / sr
+            if glottal >= 1 { glottal -= 1 }
+            let saw = 2 * glottal - 1
+            glottalLow += 0.25 * (saw - glottalLow)
+            let lowVoice = sin(twoPi * pitch * 0.5 * t) * 0.35
+            breath = noiseB.next()
+            let source = (glottalLow + lowVoice) * voiced + breath * aspiration * 0.5
+            let vowel = f1.process(source) * 1.0 + f2.process(source) * 0.7 + f3.process(source) * 0.3
+            var out = vowel * 0.45
+            if index >= echoDelay { out += history[index - echoDelay] * 0.32 }
+            if index < history.count { history[index] = out }
+            index += 1
+            return Float(tanh(out * 1.4) * 0.8)
+        }
+
+        // Defeat: a slow, sinking minor line on a wheezy organ, then a low chord with a sour tritone.
+        let line = [69.0, 68, 67, 66]
+        let chord = [38.0, 50, 53, 56]
+        buffers[.defeat] = makeBuffer(3.2) { t in
+            func organ(_ note: Double, _ time: Double) -> Double {
+                let f = self.midi(note)
+                let tremolo = 1 + 0.12 * sin(twoPi * 5.5 * time)
+                return (sin(twoPi * f * time) + 0.5 * sin(twoPi * f * 2 * time) + 0.25 * sin(twoPi * f * 3 * time)) * tremolo
+            }
+            var s = 0.0
+            let step = 0.34
+            let i = Int(t / step)
+            if i < line.count {
+                let local = t - Double(i) * step
+                s += organ(line[i], t) * min(1, local / 0.02) * exp(-local * 2.5) * 0.3
+            } else {
+                let local = t - Double(line.count) * step
+                let env = min(1, local / 0.05) * exp(-local * 1.1)
+                for note in chord { s += organ(note, t) * env * 0.16 }
+            }
+            return Float(tanh(s * 1.2) * 0.85)
         }
     }
 }
