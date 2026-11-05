@@ -996,7 +996,7 @@ final class RunScene: SKScene {
                 guard let self, self.state != .running else { return }
                 self.audio.play(.evilLaugh)
             },
-            .wait(forDuration: 2.8),
+            .wait(forDuration: 3.5),
             .run { [weak self] in
                 guard let self, self.state != .running else { return }
                 self.audio.play(.defeat, volume: 0.8)
@@ -1763,8 +1763,8 @@ final class RunScene: SKScene {
         ]), withKey: "shake")
     }
 
-    func thunderFlash(strength: Double) {
-        audio.play(.thunder, volume: Float(min(1, 0.4 + strength)))
+    func thunderFlash(strength: Double, withSound: Bool = true) {
+        if withSound { audio.play(.thunder, volume: Float(min(1, 0.4 + strength))) }
         flash.removeAllActions()
         flash.color = UIColor(hex: 0xE8E9FF)
         flash.alpha = 0

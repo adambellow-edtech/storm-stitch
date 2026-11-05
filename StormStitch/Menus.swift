@@ -66,7 +66,7 @@ extension RunScene {
             node.addChild(card)
             return node
         }
-        if tallArt, width / height < 4.0 / 3.0, width / height > 0.55, let tall = tallPaperCard(width: width, height: height) {
+        if tallArt, width / height < 4.0 / 3.0, width / height > 0.45, let tall = tallPaperCard(width: width, height: height) {
             node.addChild(tall)
             return node
         }
@@ -97,10 +97,12 @@ extension RunScene {
         let top = SKSpriteNode(texture: SKTexture(rect: CGRect(x: 0, y: 0.5, width: 1, height: 0.5), in: texture),
                                size: CGSize(width: width, height: baseH / 2))
         top.position = CGPoint(x: 0, y: height / 2 - baseH / 4)
+        top.zPosition = 0.1
         node.addChild(top)
         let bottom = SKSpriteNode(texture: SKTexture(rect: CGRect(x: 0, y: 0, width: 1, height: 0.5), in: texture),
                                   size: CGSize(width: width, height: baseH / 2))
         bottom.position = CGPoint(x: 0, y: -height / 2 + baseH / 4)
+        bottom.zPosition = 0.1
         node.addChild(bottom)
         let bandFraction: CGFloat = 0.2
         let bandH = baseH * bandFraction
@@ -111,7 +113,7 @@ extension RunScene {
             let rect = CGRect(x: 0, y: 0.4, width: 1, height: bandFraction * piece / bandH)
             let band = SKSpriteNode(texture: SKTexture(rect: rect, in: texture), size: CGSize(width: width, height: piece + 0.5))
             band.position = CGPoint(x: 0, y: y + piece / 2)
-            band.zPosition = -0.1
+            band.zPosition = 0.05
             node.addChild(band)
             y += piece
         }
@@ -393,7 +395,7 @@ extension RunScene {
         // Color soaks back in around cleared stages and along the path between them, with soft, uneven edges.
         let colorMap = fill("map-color", fallback: UIColor(hex: 0x7FCF84))
         let cleared = (0..<spots.count).filter { progress.stars(forStage: $0) > 0 }
-        if !cleared.isEmpty, let colorSprite = colorMap as? SKSpriteNode {
+        if !cleared.isEmpty, let colorSprite = colorMap as? SKSpriteNode, colorSprite.texture != nil {
             var blobs: [(center: CGPoint, radius: CGFloat, seed: UInt64)] = cleared.map { (spots[$0], w * 0.3, UInt64($0 + 1)) }
             for i in cleared where i + 1 < spots.count {
                 let segment = mapCurve(spots, from: i)
@@ -867,10 +869,11 @@ extension RunScene {
             var result: [(row: Int, x: CGFloat)] = []
             let base = count / shelfLines.count, extra = count % shelfLines.count
             let center = (insideLeft + insideRight) / 2
+            let perShelf = CGFloat(max(3, (count + shelfLines.count - 1) / shelfLines.count))
             for row in 0..<shelfLines.count {
-                let inRow = min(3, base + (row < extra ? 1 : 0))
+                let inRow = base + (row < extra ? 1 : 0)
                 for i in 0..<inRow {
-                    let x = center + (CGFloat(i) - CGFloat(inRow - 1) / 2) * (insideRight - insideLeft) / 3
+                    let x = center + (CGFloat(i) - CGFloat(inRow - 1) / 2) * (insideRight - insideLeft) / perShelf
                     result.append((row, x))
                 }
             }

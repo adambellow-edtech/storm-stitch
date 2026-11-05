@@ -205,7 +205,7 @@ extension RunScene {
         guard lightningCooldown <= 0 else { return }
         lightningCooldown = 1.2
         audio.play(.crack, volume: min(1, 0.55 + Float(power) * 0.15))
-        thunderFlash(strength: 0.35 + Double(power) * 0.15)
+        thunderFlash(strength: 0.35 + Double(power) * 0.15, withSound: false)
         shake(strength: CGFloat(3 + power * 3))
         haptics.hit()
         let top = (stormArt?.frame.maxY ?? size.height * 0.3) - 10
@@ -291,8 +291,10 @@ extension RunScene {
 
         // The needle sews cross-stitches down the tear, one X at a time, riding along with the gate.
         let gateSprite = gate.sprite
-        let gateW = gateSprite.size.width
-        let gateH = gateSprite.size.height
+        // The gate is scaled by depth every frame; work in its unscaled painting size.
+        let gateArtSize = (illustrated("seam-gate", width: 360) ?? art.seamGate).size
+        let gateW = gateArtSize.width
+        let gateH = gateArtSize.height
         // Where the tear runs in the seam-gate painting, as fractions (x from left, y from bottom).
         let tear: [(x: CGFloat, y: CGFloat)] = [(0.50, 0.72), (0.49, 0.65), (0.47, 0.58), (0.46, 0.51),
                                                 (0.46, 0.44), (0.465, 0.37), (0.475, 0.30)]
@@ -303,7 +305,7 @@ extension RunScene {
 
         let needle = SKNode()
         needle.zPosition = 6
-        let needleArt = illustrated("needle", width: gateW * 0.2) ?? art.needle
+        let needleArt = illustrated("needle", width: 72) ?? art.needle
         let needleSprite = SKSpriteNode(texture: needleArt.texture, size: needleArt.size)
         // The painted needle points down-left; turn it so its tip leads along the path.
         needleSprite.zRotation = 2.28
@@ -321,7 +323,7 @@ extension RunScene {
             path.addQuadCurve(to: point, control: mid)
             needleAt = point
             return .run { [weak needle] in
-                needle?.run(.follow(path, asOffset: false, orientToPath: true, duration: duration))
+                needle?.run(.follow(path, asOffset: false, orientToPath: true, duration: duration), withKey: "sew")
             }
         }
         for (i, spot) in tear.enumerated() {
@@ -345,7 +347,7 @@ extension RunScene {
                 })
                 needleAt = arm.1
                 actions.append(.run { [weak needle] in
-                    needle?.run(.move(to: arm.1, duration: 0.06))
+                    needle?.run(.move(to: arm.1, duration: 0.06), withKey: "sew")
                 })
                 actions.append(.wait(forDuration: 0.06))
             }
