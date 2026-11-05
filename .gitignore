@@ -7,3 +7,4 @@ xcuserdata/
 StormStitch/Info.plist
 StormStitch/StormStitch.entitlements
 tools/appstore/out/appstore-*.png
+__pycache__/
