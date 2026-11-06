@@ -832,6 +832,7 @@ extension RunScene {
         board.zPosition = 1
         card.addChild(board)
         onTap(board) { GameCenter.showLeaderboards(GameCenter.dailyBoard) }
+        addLiveRaceButton(below: card, cardHeight: cardH)
         closeButton(at: CGPoint(x: w / 2 + cardW / 2 - 18, y: card.position.y + top - 18)) { [unowned self] in self.showTitle() }
     }
 
@@ -1289,6 +1290,7 @@ extension RunScene {
             subtitle = "Best: \(Progress.shared.data.bestEndlessMeters.formatted()) m"
             starLabels = ["1,000 m", "No hits", "Stitched"]
         }
+        if let live = liveRaceResultText() { title = live.title; subtitle = live.subtitle }
         let titleSprite = label(title, size: 23 * k, color: finished ? Palette.stitchGold : .white)
         if titleSprite.size.width > cardW - 60 { titleSprite.setScale((cardW - 60) / titleSprite.size.width) }
         titleSprite.position = CGPoint(x: 0, y: innerTop - 20 * k)
@@ -1516,6 +1518,7 @@ extension RunScene {
             buttons.append(("Scores", { GameCenter.showLeaderboards(GameCenter.endlessBoard) }))
             buttons.append(("Home", { [unowned self] in self.showTitle() }))
         }
+        if let live = liveRaceResultButtons() { buttons = live }
         let perRow = buttons.count == 3 ? 3 : 2
         let buttonW = min(190, (w - 24) / CGFloat(perRow) - 8)
         let buttonH = buttonW * 300.0 / 720.0

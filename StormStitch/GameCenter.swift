@@ -22,6 +22,7 @@ enum GameCenter {
                 presenter.present(viewController, animated: true)
             } else if GKLocalPlayer.local.isAuthenticated {
                 syncAll()
+                LiveRace.shared.registerForInvites()
             }
         }
     }
