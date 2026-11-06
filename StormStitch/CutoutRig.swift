@@ -387,3 +387,42 @@ extension CutoutRig {
         ]) { _, own in own }
     }
 }
+
+// MARK: Front view, for the results card
+// Parts: body (with a "blink" drawing) and arm-l, arm-r, which swap between rest, "wave", "cheer"
+// and "slump". Loaded from "<monster>-front-rig.json".
+
+extension CutoutRig {
+    /// Standing and breathing; the right arm waves in the middle of the loop, and the eyes blink.
+    static func frontIdle(_ t: CGFloat) -> [String: PartPose] {
+        let breathe = sin(2 * .pi * t)
+        let wave = smooth(0.3, 0.38, t) * (1 - smooth(0.72, 0.8, t))
+        return [
+            "arm-l": PartPose(degrees: 3 * breathe),
+            "arm-r": PartPose(degrees: -3 * breathe + 18 * wave * sin(2 * .pi * t * 6), variant: wave > 0.5 ? "wave" : nil),
+            "body": PartPose(sx: 1 - 0.01 * breathe, sy: 1 + 0.015 * breathe, variant: t > 0.9 && t < 0.94 ? "blink" : nil)
+        ]
+    }
+
+    /// A win: two hops with both fists pumping.
+    static func frontCheer(_ t: CGFloat) -> [String: PartPose] {
+        let hop = abs(sin(2 * .pi * t))
+        let pump = sin(4 * .pi * t)
+        let land = 1 - smooth(0, 0.12, hop)
+        return [
+            "arm-l": PartPose(degrees: 10 * pump, variant: "cheer"),
+            "arm-r": PartPose(degrees: -10 * pump, variant: "cheer"),
+            "body": PartPose(dy: 35 * hop, sx: 1 + 0.06 * land - 0.03 * hop, sy: 1 - 0.08 * land + 0.05 * hop)
+        ]
+    }
+
+    /// Caught by the storm: arms hang limp, the body sags and sways, eyes squeeze shut now and then.
+    static func frontSlump(_ t: CGFloat) -> [String: PartPose] {
+        let sway = sin(2 * .pi * t)
+        return [
+            "arm-l": PartPose(degrees: 4 * sway, variant: "slump"),
+            "arm-r": PartPose(degrees: 4 * sway, variant: "slump"),
+            "body": PartPose(degrees: 3 * sway, sx: 1.04, sy: 0.93, variant: t > 0.5 ? "blink" : nil)
+        ]
+    }
+}

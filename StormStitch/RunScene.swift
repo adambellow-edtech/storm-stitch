@@ -137,6 +137,10 @@ final class RunScene: SKScene {
     /// Which monster `cutout` belongs to, and every rig loaded so far (nil: that monster has no rig art yet).
     var cutoutID = ""
     var cutoutCache: [String: CutoutRig?] = [:]
+    /// The same for the front-facing rig on the results card: an armless body and swappable arms.
+    var frontCutout: CutoutRig?
+    var frontCutoutID = ""
+    var frontCutoutCache: [String: CutoutRig?] = [:]
     let brambleBack = SKTexture(imageNamed: "bramble-back")
     let brambleFront = SKTexture(imageNamed: "bramble-front")
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
@@ -2058,15 +2062,21 @@ final class RunScene: SKScene {
         // Pick the pose. Results: facing you (Bramble cheers or sits dizzy). Running: hit, slide, jump or run.
         let running = state != .over
         let id = monster.id
+        swapFrontCutoutIfNeeded()
+        // The front rig waves, cheers on a win and slumps when the storm wins. Bramble keeps his
+        // painted dizzy pose for the loss.
+        let useFront = frontCutout != nil && !running && !(hasPoses && eyeGloat)
         if !running {
-            if hasPoses && eyeDefeated {
+            if hasPoses && eyeDefeated && !useFront {
                 setPose("bramble-win", height: 150)
             } else if hasPoses && eyeGloat {
                 setPose("bramble-lose", height: 150)
             } else {
                 setPose("\(id)-front", height: monster.frontHeight)
             }
-            if !hasPoses && eyeDefeated {
+            if useFront {
+                // The front rig does its own hopping and slumping.
+            } else if !hasPoses && eyeDefeated {
                 // A happy hop for the winners.
                 rig.position.y = CGFloat(abs(sin(clock * 5.5))) * 16
             } else if !hasPoses && eyeGloat {
@@ -2123,6 +2133,24 @@ final class RunScene: SKScene {
             }
         }
 
+        if let front = frontCutout {
+            front.isHidden = !useFront
+            if useFront {
+                brambleSprite.isHidden = true
+                let pose: [String: PartPose]
+                if eyeDefeated {
+                    pose = CutoutRig.frontCheer(CGFloat((clock / 1.2).truncatingRemainder(dividingBy: 1)))
+                } else if eyeGloat {
+                    pose = CutoutRig.frontSlump(CGFloat((clock / 3).truncatingRemainder(dividingBy: 1)))
+                } else {
+                    pose = CutoutRig.frontIdle(CGFloat((clock / 4).truncatingRemainder(dividingBy: 1)))
+                }
+                front.apply(pose)
+            } else if cutout?.isHidden != false {
+                brambleSprite.isHidden = false
+            }
+        }
+
         // Blinking and breathing while facing the camera.
         if !running && currentPose == "\(id)-front" {
             frontBlinkTimer -= lastRenderDt
@@ -2174,6 +2202,27 @@ final class RunScene: SKScene {
         cutout = loaded
         cutoutID = monster.id
         brambleSprite.isHidden = false
+    }
+
+    /// Loads the selected monster's front-facing rig, if it has one, and swaps it in.
+    func swapFrontCutoutIfNeeded() {
+        guard frontCutoutID != monster.id else { return }
+        frontCutout?.removeFromParent()
+        let loaded: CutoutRig?
+        if let cached = frontCutoutCache[monster.id] {
+            loaded = cached
+        } else {
+            loaded = CutoutRig(named: "\(monster.id)-front")
+            frontCutoutCache[monster.id] = loaded
+        }
+        if let loaded {
+            loaded.setScale(monster.frontHeight / loaded.height)
+            loaded.isHidden = true
+            loaded.zPosition = 4
+            rig.addChild(loaded)
+        }
+        frontCutout = loaded
+        frontCutoutID = monster.id
     }
 
     func renderCamera() {
