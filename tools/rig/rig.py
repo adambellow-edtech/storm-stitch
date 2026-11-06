@@ -34,39 +34,80 @@ TORSO = {"body", "arm-l", "arm-r", "sprout"}
 KICK_AT = 0.3
 
 
-def P(dx=0.0, dy=0.0, deg=0.0, sx=1.0, sy=1.0, variant=None):
-    return {"dx": dx, "dy": dy, "deg": deg, "sx": sx, "sy": sy, "variant": variant}
+def P(dx=0.0, dy=0.0, deg=0.0, sx=1.0, sy=1.0, variant=None, blend=None):
+    """blend: how much of the variant drawing shows, 0 to 1. None means all or nothing by `variant`."""
+    if blend is None:
+        blend = 1.0 if variant else 0.0
+    return {"dx": dx, "dy": dy, "deg": deg, "sx": sx, "sy": sy, "variant": variant, "blend": blend}
+
+
+def smooth(a, b, x):
+    """0 below a, 1 above b, an S-curve between."""
+    t = max(0.0, min(1.0, (x - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+
+
+STANCE = 0.4  # share of the cycle each foot spends on the ground; the rest is the swing
+
+
+KICK_UNTIL = 0.55  # share of the swing that shows the sole; after that the foot reaches forward heel-first
+
+
+def foot_pose(phase, side):
+    """One foot through a stride. phase 0 is the foot landing; side -1 is the left foot, 1 the right.
+    From behind, the sole shows only while the foot is kicked up behind the runner. It swaps to the
+    kicked drawing at push-off and back to the heel as it swings forward to land: both swaps happen
+    while the foot moves fast, each with a quick squash so they read as a snap rather than a pop."""
+    phase %= 1.0
+    if phase < STANCE:
+        # Landing: the foot squashes flat for a moment, then stands.
+        land = 1 - smooth(0.0, 0.08, phase)
+        # Late in the stance the heel peels up as the foot pushes off.
+        peel = smooth(STANCE * 0.55, STANCE, phase)
+        return P(dy=14 * peel, sx=1 + 0.08 * land, sy=1 - 0.12 * land - 0.08 * peel)
+    u = (phase - STANCE) / (1 - STANCE)  # 0 just after push-off, 1 at landing
+    # The foot rises fast behind the runner and comes down to land: a smooth arc that peaks early.
+    height = math.sin(math.pi * u ** 0.8)
+    rise = 14 + 120 * height - 14 * u
+    if u < KICK_UNTIL:
+        k = u / KICK_UNTIL
+        snap = 0.85 + 0.15 * smooth(0.0, 0.2, k)
+        size = (1.08 - 0.1 * k) * snap
+        # Kicked back toward the camera: big and tipped up, curling as it rises.
+        return P(dy=rise, deg=side * (22 - 18 * k), sx=size, sy=size, variant="kick")
+    k = (u - KICK_UNTIL) / (1 - KICK_UNTIL)
+    snap = 0.88 + 0.12 * smooth(0.0, 0.25, k)
+    # Reaching forward to land, heel toward you, a little smaller because it's further away.
+    return P(dy=rise, deg=side * -6 * (1 - k), sx=0.94 * snap + 0.06 * k, sy=0.94 * snap + 0.06 * k)
 
 
 def run_pose(t):
     """Running away from the camera. t goes 0 to 1 over one cycle (two steps)."""
     p = 2 * math.pi * t
-    s = math.sin(p)
-    lift_l = max(0.0, s)
-    lift_r = max(0.0, -s)
-    bob = 14 * abs(s)
-    sway = 3 * s
-
-    def foot(lift, side):
-        if lift > KICK_AT:
-            # Kicked back toward the camera: the bent leg with its sole showing, rising off the ground.
-            return P(dy=55 * lift, deg=side * 6 * lift, variant="kick")
-        # Planted, or just leaving the ground: a small rise as the heel peels up.
-        return P(dy=30 * lift)
+    # Each foot lands once a cycle, half a cycle apart.
+    left, right = t, t + 0.5
+    # The body is lowest mid-stance (a foot under it) and highest mid-flight, twice a cycle.
+    low = 0.5 + 0.5 * math.cos(4 * math.pi * (t - STANCE / 2))  # 1 at mid-stance
+    bob = 16 * (1 - low)
+    sway = 3 * math.cos(p - math.pi * STANCE)  # leans over whichever foot is planted
+    # Arms swing opposite their own leg: forward (away from you) while that leg kicks back.
+    swing = math.sin(p - math.pi * STANCE)
 
     def arm(forward, side):
-        # From behind, an arm swinging forward moves away from you: it rises, shrinks and tucks in.
-        # Swinging back, it comes toward you: it drops, grows and swings out.
-        return P(dy=16 * forward, deg=side * 18 * forward, sx=1 - 0.1 * forward, sy=1 - 0.1 * forward)
+        return P(dy=16 * forward, deg=side * 16 * forward, sx=1 - 0.09 * forward, sy=1 - 0.09 * forward)
 
+    # The sprout follows the body a beat late, so it flops and settles.
+    lag = 0.09
+    low_late = 0.5 + 0.5 * math.cos(4 * math.pi * (t - lag - STANCE / 2))
+    sway_late = 3 * math.cos(2 * math.pi * (t - lag) - math.pi * STANCE)
     return {
-        "foot-l": foot(lift_l, -1),
-        "foot-r": foot(lift_r, 1),
-        # The arm on the same side as the kicking foot swings forward.
-        "arm-l": arm(s, 1),
-        "arm-r": arm(-s, -1),
-        "sprout": P(dy=bob * 0.5, deg=-sway * 0.6 + 12 * math.sin(p - 1.1)),
-        "body": P(dy=bob, deg=sway, sx=1 - 0.02 * abs(math.cos(p)), sy=1 + 0.025 * abs(s)),
+        "foot-l": foot_pose(left, -1),
+        "foot-r": foot_pose(right, 1),
+        "arm-l": arm(swing, 1),
+        "arm-r": arm(-swing, -1),
+        "sprout": P(dy=-6 * low_late, deg=-sway_late * 3, sx=1 + 0.05 * low_late, sy=1 - 0.08 * low_late),
+        # A little squash on each landing, a little stretch in the air.
+        "body": P(dy=bob, deg=sway, sx=1 + 0.03 * low - 0.015 * (1 - low), sy=1 - 0.04 * low + 0.02 * (1 - low)),
     }
 
 
@@ -120,14 +161,26 @@ def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
     body = pose["body"]
 
     def order(part):
-        if part["name"].startswith("foot") and pose[part["name"]]["variant"] == "kick":
+        if part["name"].startswith("foot") and pose[part["name"]]["blend"] > 0.5:
             return 1  # seen from behind, a kicked foot passes in front of the body
         return part["z"]
 
+    layers = []
     for part in sorted(MANIFEST["parts"], key=order):
+        q = pose[part["name"]]
+        if q["variant"] and 0 < q["blend"] < 1:
+            # Crossfade: the part's own drawing fading out under the variant fading in.
+            layers.append((part, None, 1 - q["blend"]))
+            layers.append((part, q["variant"], q["blend"]))
+        else:
+            layers.append((part, q["variant"] if q["blend"] >= 1 else None, 1.0))
+    for part, variant, alpha in layers:
         name = part["name"]
         q = pose[name]
-        img, pivot = picture_for(part, q["variant"], images)
+        img, pivot = picture_for(part, variant, images)
+        if alpha < 1:
+            img = img.copy()
+            img.putalpha(img.getchannel("A").point(lambda v: int(v * alpha)))
         jx, jy = part["joint"]
         deg = q["deg"]
         if name in TORSO and name != "body":
@@ -157,14 +210,14 @@ def preview(folder, out_dir, size=(380, 450)):
     images = load_images(folder)
     frames = []
     # Two cycles at game speed (about 0.23 s each), then two at half speed so the motion is easy to read.
-    for steps, cycles in [(10, 2), (20, 2)]:
+    for steps, cycles in [(14, 3), (28, 2)]:
         for _ in range(cycles):
             frames += [render(images, run_pose(i / steps)) for i in range(steps)]
     frames += [render(images, jump_pose(i / 17), lift=260 * math.sin(math.pi * i / 17)) for i in range(18)]
     frames += [render(images, run_pose(i / 10)) for i in range(10)]
     small = [f.convert("RGB").resize(size, Image.LANCZOS) for f in frames]
     small[0].save(f"{out_dir}/{MANIFEST['name']}-rig-preview.gif", save_all=True, append_images=small[1:],
-                  duration=42, loop=0)
+                  duration=33, loop=0)
     keys = [run_pose(0), run_pose(0.25), run_pose(0.5), run_pose(0.75), jump_pose(0.5)]
     sheet = Image.new("RGB", (size[0] * len(keys), size[1]), (255, 255, 255))
     for i, pose in enumerate(keys):

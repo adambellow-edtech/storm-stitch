@@ -149,42 +149,78 @@ final class CutoutRig: SKNode {
 // Feet have a "kick" variant showing the sole. Distances are rig units for a character about 450 units tall.
 
 extension CutoutRig {
-    /// A foot lifted past this switches to its kicked drawing.
-    static let kickAt: CGFloat = 0.3
+    /// Share of the cycle each foot spends on the ground; the rest is the swing, so there's a short
+    /// moment with both feet in the air between steps.
+    static let stance: CGFloat = 0.4
+    /// Share of the swing that shows the sole. After that the foot reaches forward heel-first to land.
+    static let kickUntil: CGFloat = 0.55
+
+    /// 0 below a, 1 above b, an S-curve between.
+    static func smooth(_ a: CGFloat, _ b: CGFloat, _ x: CGFloat) -> CGFloat {
+        let t = max(0, min(1, (x - a) / (b - a)))
+        return t * t * (3 - 2 * t)
+    }
+
+    /// One foot through a stride. Phase 0 is the foot landing; side -1 is the left foot, 1 the right.
+    /// From behind, the sole shows only while the foot is kicked up behind the runner. The drawings swap
+    /// at push-off and again mid-swing, while the foot moves fast, each with a quick squash so the swap
+    /// reads as a snap rather than a pop.
+    static func foot(_ phase: CGFloat, side: CGFloat) -> PartPose {
+        let phase = phase.truncatingRemainder(dividingBy: 1)
+        if phase < stance {
+            // Landing: the foot squashes flat for a moment, then stands.
+            let land = 1 - smooth(0, 0.08, phase)
+            // Late in the stance the heel peels up as the foot pushes off.
+            let peel = smooth(stance * 0.55, stance, phase)
+            return PartPose(dy: 7 * peel, sx: 1 + 0.08 * land, sy: 1 - 0.12 * land - 0.08 * peel)
+        }
+        let u = (phase - stance) / (1 - stance)  // 0 just after push-off, 1 at landing
+        // The foot rises fast behind the runner and comes down to land: a smooth arc that peaks early.
+        let height = sin(.pi * pow(u, 0.8))
+        let rise = 7 + 60 * height - 7 * u
+        if u < kickUntil {
+            let k = u / kickUntil
+            let size = (1.08 - 0.1 * k) * (0.85 + 0.15 * smooth(0, 0.2, k))
+            // Kicked back toward the camera: big and tipped up, curling as it rises.
+            return PartPose(dy: rise, degrees: side * (22 - 18 * k), sx: size, sy: size, variant: "kick")
+        }
+        let k = (u - kickUntil) / (1 - kickUntil)
+        let size = 0.94 * (0.88 + 0.12 * smooth(0, 0.25, k)) + 0.06 * k
+        // Reaching forward to land, heel toward you, a little smaller because it's further away.
+        return PartPose(dy: rise, degrees: side * -6 * (1 - k), sx: size, sy: size)
+    }
 
     /// Running away from the camera. t goes 0 to 1 over one full cycle, which is two steps.
     static func run(_ t: CGFloat) -> [String: PartPose] {
         let p = 2 * .pi * t
-        let s = sin(p)
-        let liftL = max(0, s)
-        let liftR = max(0, -s)
-        let bob = 7 * abs(s)
-        let sway = 3 * s
-
-        func foot(_ lift: CGFloat, side: CGFloat) -> PartPose {
-            if lift > CutoutRig.kickAt {
-                // Kicked back toward the camera: the bent leg with its sole showing, rising off the ground.
-                return PartPose(dy: 27.5 * lift, degrees: side * 6 * lift, variant: "kick")
-            }
-            // Planted, or just leaving the ground: a small rise as the heel peels up.
-            return PartPose(dy: 15 * lift)
-        }
+        // The body is lowest mid-stance (a foot under it) and highest mid-flight, twice a cycle.
+        let low = 0.5 + 0.5 * cos(4 * .pi * (t - stance / 2))
+        let bob = 8 * (1 - low)
+        // Leans over whichever foot is planted.
+        let sway = 3 * cos(p - .pi * stance)
+        // Arms swing opposite their own leg: forward (away from you) while that leg kicks back.
+        let swing = sin(p - .pi * stance)
 
         func arm(_ forward: CGFloat, side: CGFloat) -> PartPose {
             // From behind, an arm swinging forward moves away from you: it rises, shrinks and tucks in.
             // Swinging back, it comes toward you: it drops, grows and swings out.
-            PartPose(dy: 8 * forward, degrees: side * 18 * forward, sx: 1 - 0.1 * forward, sy: 1 - 0.1 * forward)
+            PartPose(dy: 8 * forward, degrees: side * 16 * forward, sx: 1 - 0.09 * forward, sy: 1 - 0.09 * forward)
         }
 
+        // The sprout follows the body a beat late, so it flops and settles.
+        let lag: CGFloat = 0.09
+        let lowLate = 0.5 + 0.5 * cos(4 * .pi * (t - lag - stance / 2))
+        let swayLate = 3 * cos(2 * .pi * (t - lag) - .pi * stance)
         return [
-            "foot-l": foot(liftL, side: -1),
-            "foot-r": foot(liftR, side: 1),
-            // The arm on the same side as the kicking foot swings forward.
-            "arm-l": arm(s, side: 1),
-            "arm-r": arm(-s, side: -1),
-            // The tuft lags behind the body's sway, so it flops.
-            "sprout": PartPose(dy: bob * 0.5, degrees: -sway * 0.6 + 12 * sin(p - 1.1)),
-            "body": PartPose(dy: bob, degrees: sway, sx: 1 - 0.02 * abs(cos(p)), sy: 1 + 0.025 * abs(s))
+            // Each foot lands once a cycle, half a cycle apart.
+            "foot-l": foot(t, side: -1),
+            "foot-r": foot(t + 0.5, side: 1),
+            "arm-l": arm(swing, side: 1),
+            "arm-r": arm(-swing, side: -1),
+            "sprout": PartPose(dy: -3 * lowLate, degrees: -swayLate * 3, sx: 1 + 0.05 * lowLate, sy: 1 - 0.08 * lowLate),
+            // A little squash on each landing, a little stretch in the air.
+            "body": PartPose(dy: bob, degrees: sway,
+                             sx: 1 + 0.03 * low - 0.015 * (1 - low), sy: 1 - 0.04 * low + 0.02 * (1 - low))
         ]
     }
 
