@@ -779,6 +779,22 @@ extension RunScene {
         let hasArt = artImage("\(holiday.rivalID)-back") != nil
         rivalSprite.color = holiday == .harvest ? UIColor(hex: 0xC2551F) : UIColor(hex: 0x8A5A2B)
         rivalSprite.colorBlendFactor = hasArt ? 0 : 0.55
+        // The rival runs on the same jointed rig as the player when it has one; the painting is the fallback.
+        rivalCutout?.removeFromParent()
+        rivalCutout = nil
+        if let rigged = CutoutRig(named: holiday.rivalID), rigged.height > 0 {
+            // The same on-screen height the painted rival had, so the race reads the same.
+            let paintedHeight = back != nil ? rivalSprite.size.height : Monster.named(holiday.rivalID).runHeight * 0.75
+            rigged.setScale(paintedHeight / rigged.height)
+            rigged.zPosition = 4
+            rivalSprite.addChild(rigged)
+            rivalCutout = rigged
+            // Keep the sprite as the rig's carrier (position, scale, depth) but draw nothing itself.
+            rivalSprite.texture = nil
+            rivalSprite.color = .clear
+            rivalSprite.colorBlendFactor = 1
+            rivalSprite.size = CGSize(width: 1, height: 1)
+        }
         rivalSprite.isHidden = false
         rivalLabel.isHidden = false
         rivalX = laneIndex == 1 ? 0 : 1
@@ -803,12 +819,23 @@ extension RunScene {
     }
 
     func renderRival() {
-        guard !rivalSprite.isHidden,
-              let p = project(x: rivalX, z: 4.2, y: abs(sin(clock * 8.5)) * 0.18) else { return }
+        guard !rivalSprite.isHidden else { return }
+        // The rig bounces on its own; only the painted fallback needs the hop.
+        let hop = rivalCutout == nil ? abs(sin(clock * 8.5)) * 0.18 : 0
+        guard let p = project(x: rivalX, z: 4.2, y: hop) else { return }
         rivalSprite.position = p.point
         rivalSprite.setScale(p.scale)
         rivalSprite.zPosition = CGFloat((spawnZ + 10 - 4.2) * 5)
-        rivalSprite.zRotation = CGFloat(sin(clock * 8.5)) * 0.08 + CGFloat(rivalX - rivalTargetX) * 0.3
+        // Leaning into a lane change.
+        let lean = CGFloat(rivalX - rivalTargetX) * 0.3
+        if let rivalCutout {
+            rivalSprite.zRotation = 0
+            // Two steps per cycle at the same stride rate the old hop used (one step every pi/8.5 s).
+            let t = CGFloat((clock * 8.5 / (2 * Double.pi)).truncatingRemainder(dividingBy: 1))
+            rivalCutout.apply(CutoutRig.run(t), lean: lean)
+        } else {
+            rivalSprite.zRotation = CGFloat(sin(clock * 8.5)) * 0.08 + lean
+        }
     }
 
     // MARK: Holiday themes

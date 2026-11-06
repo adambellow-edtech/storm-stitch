@@ -70,9 +70,14 @@ final class StoryPlayer: SKNode {
     /// Three friends who aren't painted into any panel, so they never double up with the art.
     /// Together with the friends painted on the last page, they make the whole roster.
     private static let friends = ["crumple", "squidge", "corrugo"]
+    /// Off: the extra live cast read as clutter on top of the paintings. The scripts stay in case
+    /// panels with open ground come later.
+    private static let addsCast = false
 
     /// Spots are picked to stand on open ground in each painting, clear of the painted characters.
     private static func cast(for staging: Staging) -> [Member] {
+        // The paintings carry the characters; no extra cast is added on top of them.
+        if !addsCast { return [] }
         func trio(_ spots: [CGFloat]) -> [Member] {
             zip(friends, spots).map { Member(id: $0.0, front: true, fx: $0.1) }
         }

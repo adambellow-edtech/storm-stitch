@@ -277,6 +277,8 @@ final class RunScene: SKScene {
     var themeApplied = false
     var holidayEmitters: [SKEmitterNode] = []
     let rivalSprite = SKSpriteNode()
+    /// The holiday rival's cutout run rig, riding inside rivalSprite so it runs like the player.
+    var rivalCutout: CutoutRig?
     var rivalX = 1.0
     var rivalTargetX = 1.0
     var rivalLaneTimer = 0.0
