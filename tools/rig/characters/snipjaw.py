@@ -15,12 +15,13 @@ def manifest(piv):
             limb("foot-r", "foot-plant-r", [110, 175], 0.34, -3,
                  {"push": "foot-push-r", "kick": "foot-kick-r", "pass": "foot-pass-r"}),
             # Front legs: planted by default, reaching forward, pushing back, tucked for jumps.
-            limb("arm-l", "arm-hang", [-265, 340], 0.4, -2,
+            limb("arm-l", "arm-hang", [-285, 470], 0.4, -2,
                  {"fwd": "arm-fwd", "back": "arm-back", "up": "arm-up"}),
-            limb("arm-r", "arm-hang-r", [265, 340], 0.4, -2,
+            limb("arm-r", "arm-hang-r", [285, 470], 0.4, -2,
                  {"fwd": "arm-fwd-r", "back": "arm-back-r", "up": "arm-up-r"}),
-            # The tail curls out past his right side, like his painted back view.
-            {"name": "tail", "image": "tail-r", "scale": 0.8, "pivot": [0.1, 0.1], "joint": [210, 250], "z": -1},
+            # Like his painted back view: the tail grows out of the middle of his lower back, where his
+            # spikes end, sweeps right and curls up, in front of his body.
+            {"name": "tail", "image": "tail", "scale": 0.95, "pivot": piv["tail-root"], "joint": [-20, 300], "z": 1},
             {"name": "body", "image": "body", "scale": 1.0, "pivot": [0.5, 0.0], "joint": [0, 140], "z": 0},
         ],
     }
