@@ -131,6 +131,9 @@ final class RunScene: SKScene {
     let playerNode = SKNode()
     let rig = SKNode()
     var brambleSprite = SKSpriteNode()
+    /// Bramble built from separate painted parts on joints, for the run and the jump.
+    /// Nil if the rig art isn't in the app; the painted poses cover everything then.
+    var cutout: CutoutRig?
     let brambleBack = SKTexture(imageNamed: "bramble-back")
     let brambleFront = SKTexture(imageNamed: "bramble-front")
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
@@ -440,6 +443,12 @@ final class RunScene: SKScene {
                                      size: CGSize(width: height * 452.0 / 640.0, height: height))
         brambleSprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
         rig.addChild(brambleSprite)
+        if let cutoutRig = CutoutRig(named: "bramble") {
+            cutoutRig.setScale(height / cutoutRig.height)
+            cutoutRig.isHidden = true
+            rig.addChild(cutoutRig)
+            cutout = cutoutRig
+        }
         rig.setScale(rigBaseScale)
         playerNode.addChild(rig)
         objectLayer.addChild(playerNode)
@@ -2020,6 +2029,8 @@ final class RunScene: SKScene {
         let stride = sin(runPhase * .pi)
 
         let hasPoses = monster.id == "bramble"
+        // The jointed rig runs and jumps; painted poses still cover slides, hits and the results screen.
+        let useCutout = cutout != nil && hasPoses && state != .over && hitPoseTimer <= 0 && !sliding
         if sliding && state != .over {
             sx = hasPoses ? 1 : 1.25
             sy = hasPoses ? 1 : 0.55
@@ -2028,9 +2039,11 @@ final class RunScene: SKScene {
             sx = 1 + 0.18 * amount
             sy = 1 - 0.24 * amount
         } else if airborne {
-            sx = velocityY > 0 ? 0.9 : 0.96
-            sy = velocityY > 0 ? 1.12 : 1.04
-        } else {
+            // The rig stretches its own body in the air.
+            sx = useCutout ? 1 : (velocityY > 0 ? 0.9 : 0.96)
+            sy = useCutout ? 1 : (velocityY > 0 ? 1.12 : 1.04)
+        } else if !useCutout {
+            // The rig bobs on its own steps.
             bob = CGFloat(abs(stride)) * 9
             sy = 1 + CGFloat(abs(stride)) * 0.04
         }
@@ -2085,6 +2098,24 @@ final class RunScene: SKScene {
         }
         // Bend the body for follow-through; feet stay planted.
         brambleSprite.warpGeometry = jelly.warp(mirrored: brambleSprite.xScale < 0)
+
+        if let cutout {
+            cutout.isHidden = !useCutout
+            brambleSprite.isHidden = useCutout
+            if useCutout {
+                let pose: [String: PartPose]
+                if airborne {
+                    // Rising at full jump speed is take-off (0), the peak is 0.5, falling fast is landing (1).
+                    let v = velocityY / max(tuning.jumpVelocity, 0.1)
+                    pose = CutoutRig.jump(CGFloat(max(0, min(1, 0.5 - 0.5 * v))))
+                } else {
+                    // One rig cycle is two steps, the same as the stride the bob already follows.
+                    pose = CutoutRig.run(CGFloat((runPhase / 2).truncatingRemainder(dividingBy: 1)))
+                }
+                // The torso tips with the same follow-through spring the painted poses bend with.
+                cutout.apply(pose, lean: -CGFloat(jelly.lean.value) * 0.8)
+            }
+        }
 
         // Blinking and breathing while facing the camera.
         if !running && currentPose == "\(id)-front" {
