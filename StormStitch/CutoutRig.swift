@@ -260,7 +260,9 @@ extension CutoutRig {
         let pulse = 0.5 + 0.5 * sin(2 * .pi * t * 3)
         let flicker = 0.75 + 0.4 * pulse
         return [
-            "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker)
+            "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker),
+            // Gobbler's tail fan wiggles a beat behind the steps.
+            "tail": PartPose(degrees: 3 * sin(2 * .pi * (t - 0.12)))
         ]
     }
 
