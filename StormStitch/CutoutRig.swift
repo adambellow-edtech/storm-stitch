@@ -265,8 +265,26 @@ extension CutoutRig {
             "tail": PartPose(degrees: 3 * sin(2 * .pi * (t - 0.12))),
             // Comet's antlers rock a beat behind the body; his scarf end flaps twice a cycle.
             "antlers": PartPose(degrees: -4 * cos(2 * .pi * (t - 0.24))),
-            "scarf": PartPose(degrees: 8 * sin(4 * .pi * t), variant: sin(4 * .pi * t) > 0 ? "flap" : nil)
-        ]
+            "scarf": PartPose(degrees: 8 * sin(4 * .pi * t), variant: sin(4 * .pi * t) > 0 ? "flap" : nil),
+            // Stickle's antennae bob twice a cycle, a beat behind the body.
+            "antenna-l": PartPose(degrees: 8 * sin(4 * .pi * (t - 0.08))),
+            "antenna-r": PartPose(degrees: -8 * sin(4 * .pi * (t - 0.08)))
+        ].merging(tripod(t)) { own, _ in own }
+    }
+
+    /// Stickle's six legs: left front and back step with the right middle, then the other three.
+    static func tripod(_ t: CGFloat, allUp: Bool = false) -> [String: PartPose] {
+        let s = sin(2 * .pi * t)
+        var legs: [String: PartPose] = [:]
+        for n in 1...3 {
+            for (side, sign) in [("l", CGFloat(1)), ("r", CGFloat(-1))] {
+                let groupA = (side == "l") == (n != 2)
+                let lift = max(0, groupA ? s : -s)
+                let up = allUp || lift > 0.25
+                legs["leg-\(side)\(n)"] = PartPose(dy: 7 * lift, degrees: sign * 6 * lift, variant: up ? "up" : nil)
+            }
+        }
+        return legs
     }
 
     /// A jump, t from 0 at take-off to 1 at landing. The game moves the rig up and down; this only poses it.
@@ -276,7 +294,10 @@ extension CutoutRig {
         let arms: String? = t < 0.1 ? "back" : (t < 0.85 ? "up" : nil)
         let raise = smooth(0.1, 0.3, t)
         let wobble = 6 * sin(6 * .pi * t) * raise
-        return extras(t).merging([
+        var airborne = extras(t).merging(tripod(t, allUp: true)) { _, legs in legs }
+        airborne["antenna-l"] = PartPose(degrees: -14 * up)
+        airborne["antenna-r"] = PartPose(degrees: 14 * up)
+        return airborne.merging([
             "foot-l": PartPose(dy: 5 * up, variant: feet),
             "foot-r": PartPose(dy: 5 * up, variant: feet),
             // Arms wind back, then throw up in a cheer, wobbling a little at the top.

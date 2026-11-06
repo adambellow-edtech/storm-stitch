@@ -1,0 +1,190 @@
+{
+  "name": "stickle",
+  "view": "back",
+  "parts": [
+    {
+      "name": "leg-l1",
+      "image": "leg1-down",
+      "pivot": [
+        0.836,
+        0.8653
+      ],
+      "joint": [
+        -167.5,
+        165.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg1-up",
+          "pivot": [
+            0.8233,
+            0.8435
+          ]
+        }
+      }
+    },
+    {
+      "name": "leg-r1",
+      "image": "leg1-down-r",
+      "pivot": [
+        0.164,
+        0.8653
+      ],
+      "joint": [
+        167.5,
+        165.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg1-up-r",
+          "pivot": [
+            0.1767,
+            0.8435
+          ]
+        }
+      }
+    },
+    {
+      "name": "leg-l2",
+      "image": "leg2-down",
+      "pivot": [
+        0.8045,
+        0.8619
+      ],
+      "joint": [
+        -192.5,
+        115.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg2-up",
+          "pivot": [
+            0.8074,
+            0.8388
+          ]
+        }
+      }
+    },
+    {
+      "name": "leg-r2",
+      "image": "leg2-down-r",
+      "pivot": [
+        0.1955,
+        0.8619
+      ],
+      "joint": [
+        192.5,
+        115.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg2-up-r",
+          "pivot": [
+            0.1926,
+            0.8388
+          ]
+        }
+      }
+    },
+    {
+      "name": "leg-l3",
+      "image": "leg3-down",
+      "pivot": [
+        0.8275,
+        0.8544
+      ],
+      "joint": [
+        -150.0,
+        70.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg3-up",
+          "pivot": [
+            0.8023,
+            0.8383
+          ]
+        }
+      }
+    },
+    {
+      "name": "leg-r3",
+      "image": "leg3-down-r",
+      "pivot": [
+        0.1725,
+        0.8544
+      ],
+      "joint": [
+        150.0,
+        70.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "up": {
+          "image": "leg3-up-r",
+          "pivot": [
+            0.1977,
+            0.8383
+          ]
+        }
+      }
+    },
+    {
+      "name": "antenna-l",
+      "image": "antenna",
+      "pivot": [
+        0.8091,
+        0.0309
+      ],
+      "joint": [
+        -75.0,
+        430.0
+      ],
+      "z": -3,
+      "torso": true
+    },
+    {
+      "name": "antenna-r",
+      "image": "antenna-r",
+      "pivot": [
+        0.1909,
+        0.0309
+      ],
+      "joint": [
+        75.0,
+        430.0
+      ],
+      "z": -3,
+      "torso": true
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        35.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 524.2,
+  "inFront": [
+    "kick"
+  ]
+}
