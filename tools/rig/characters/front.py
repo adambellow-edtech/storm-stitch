@@ -14,6 +14,7 @@ SETUPS = {
     "corrugo": {"arm": [-215, 410], "scale": 0.5},
     "wickling": {"arm": [-170, 440], "scale": 0.45},
     "squidge": {"arm": [-235, 360], "scale": 0.5},
+    "crumple": {"arm": [-220, 390], "scale": 0.5},
 }
 
 

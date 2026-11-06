@@ -1,0 +1,107 @@
+{
+  "name": "crumple-front",
+  "view": "front",
+  "parts": [
+    {
+      "name": "arm-l",
+      "image": "arm-rest",
+      "pivot": [
+        0.8237,
+        0.8542
+      ],
+      "joint": [
+        -110.0,
+        195.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "wave": {
+          "image": "arm-wave",
+          "pivot": [
+            0.8586,
+            0.6668
+          ]
+        },
+        "cheer": {
+          "image": "arm-cheer",
+          "pivot": [
+            0.5903,
+            0.1637
+          ]
+        },
+        "slump": {
+          "image": "arm-slump",
+          "pivot": [
+            0.8165,
+            0.8562
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-r",
+      "image": "arm-rest-r",
+      "pivot": [
+        0.1763,
+        0.8542
+      ],
+      "joint": [
+        110.0,
+        195.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "wave": {
+          "image": "arm-wave-r",
+          "pivot": [
+            0.1414,
+            0.6668
+          ]
+        },
+        "cheer": {
+          "image": "arm-cheer-r",
+          "pivot": [
+            0.4097,
+            0.1637
+          ]
+        },
+        "slump": {
+          "image": "arm-slump-r",
+          "pivot": [
+            0.1835,
+            0.8562
+          ]
+        }
+      }
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        0.0
+      ],
+      "z": 0,
+      "torso": true,
+      "variants": {
+        "blink": {
+          "image": "body-blink",
+          "pivot": [
+            0.5,
+            0.0
+          ]
+        }
+      }
+    }
+  ],
+  "height": 433.5,
+  "inFront": [
+    "kick"
+  ]
+}
