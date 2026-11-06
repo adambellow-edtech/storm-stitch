@@ -262,7 +262,10 @@ extension CutoutRig {
         return [
             "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker),
             // Gobbler's tail fan wiggles a beat behind the steps.
-            "tail": PartPose(degrees: 3 * sin(2 * .pi * (t - 0.12)))
+            "tail": PartPose(degrees: 3 * sin(2 * .pi * (t - 0.12))),
+            // Comet's antlers rock a beat behind the body; his scarf end flaps twice a cycle.
+            "antlers": PartPose(degrees: -4 * cos(2 * .pi * (t - 0.24))),
+            "scarf": PartPose(degrees: 8 * sin(4 * .pi * t), variant: sin(4 * .pi * t) > 0 ? "flap" : nil)
         ]
     }
 

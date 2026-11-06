@@ -9,9 +9,10 @@ from PIL import Image
 from scipy import ndimage
 
 
-def clean(path):
+def clean(path, floor=40):
+    """floor: alpha at or below this counts as background haze. Raise it for hazier sheets."""
     src = np.array(Image.open(path).convert("RGBA")).astype(float)
-    alpha = np.clip((src[..., 3] - 40) / (220 - 40), 0, 1) * 255
+    alpha = np.clip((src[..., 3] - floor) / (220 - floor), 0, 1) * 255
     solid = alpha >= 250
     _, (iy, ix) = ndimage.distance_transform_edt(~solid, return_indices=True)
     rgb = src[..., :3].copy()
@@ -20,9 +21,13 @@ def clean(path):
     return np.dstack([rgb, alpha]).clip(0, 255).astype(np.uint8)
 
 
-def split(path, min_area=3000, pad=4, join=6):
+def split(path, min_area=3000, pad=4, join=6, floor=None):
     """Returns [(image, (left, top) of the image on the sheet)] left to right."""
-    sheet = clean(path)
+    if floor is None:
+        # Hazy sheets: if nearly half the sheet is faintly tinted, cut higher.
+        a = np.array(Image.open(path).convert("RGBA"))[..., 3]
+        floor = 70 if (a > 20).mean() > 0.45 else 40
+    sheet = clean(path, floor)
     labels, _ = ndimage.label(ndimage.binary_dilation(sheet[..., 3] > 0, iterations=join))
     found = []
     for i, box in enumerate(ndimage.find_objects(labels)):
