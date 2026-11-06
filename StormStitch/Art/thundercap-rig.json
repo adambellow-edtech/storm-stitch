@@ -1,0 +1,103 @@
+{
+  "name": "thundercap",
+  "view": "back",
+  "parts": [
+    {
+      "name": "bolt",
+      "image": "bolt",
+      "pivot": [
+        0.5878,
+        0.9676
+      ],
+      "joint": [
+        0.0,
+        160.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "long": {
+          "image": "bolt-long",
+          "pivot": [
+            0.5952,
+            0.9807
+          ]
+        },
+        "fork": {
+          "image": "bolt-fork",
+          "pivot": [
+            0.5911,
+            0.9803
+          ]
+        },
+        "zap": {
+          "image": "bolt-zap",
+          "pivot": [
+            0.5561,
+            0.9819
+          ]
+        }
+      }
+    },
+    {
+      "name": "sprout",
+      "image": "crest",
+      "pivot": [
+        0.5,
+        0.25
+      ],
+      "joint": [
+        0.0,
+        410.0
+      ],
+      "z": -1,
+      "torso": true
+    },
+    {
+      "name": "spark-a",
+      "image": "sparkle",
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "joint": [
+        -190.0,
+        340.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "spark-b",
+      "image": "sparkle",
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "joint": [
+        190.0,
+        255.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        130.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 473.32,
+  "inFront": [
+    "kick"
+  ]
+}

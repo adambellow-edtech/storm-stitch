@@ -281,8 +281,21 @@ extension CutoutRig {
             "drop-l": flick(t, side: -1),
             "drop-r": flick(t + 0.5, side: 1),
             // Wickling's tassel swings under him like a pendulum, a beat behind.
-            "tassel": PartPose(degrees: 10 * sin(2 * .pi * (t - 0.15)))
+            "tassel": PartPose(degrees: 10 * sin(2 * .pi * (t - 0.15))),
+            // Thundercap's bolt flickers to a new drawing four times a cycle; his sparkles twinkle.
+            "bolt": PartPose(degrees: 6 * sin(8 * .pi * t), variant: boltDrawings[Int(4 * (t - floor(t))) % 4]),
+            "spark-a": twinkle(t),
+            "spark-b": twinkle(t + 0.5)
         ].merging(tripod(t)) { own, _ in own }
+    }
+
+    static let boltDrawings: [String?] = [nil, "long", "fork", "long"]
+
+    /// A sparkle that bobs, spins and pulses in size.
+    static func twinkle(_ t: CGFloat) -> PartPose {
+        let k = 0.5 + 0.5 * sin(4 * .pi * t)
+        let size = 0.4 + 0.7 * k
+        return PartPose(dy: 10 * sin(2 * .pi * t), degrees: 90 * (t - floor(t)), sx: size, sy: size)
     }
 
     /// A drop flung off Blotch's side once a cycle, arcing out and shrinking away.
@@ -326,6 +339,8 @@ extension CutoutRig {
                                      variant: landing ? "splat" : nil)
         airborne["drop-l"] = PartPose(sx: 0.001, sy: 0.001)
         airborne["drop-r"] = PartPose(sx: 0.001, sy: 0.001)
+        // Thundercap cracks his big zap bolt in the air.
+        airborne["bolt"] = PartPose(variant: t > 0.2 && t < 0.8 ? "zap" : "long")
         return airborne.merging([
             "foot-l": PartPose(dy: 5 * up, variant: feet),
             "foot-r": PartPose(dy: 5 * up, variant: feet),
