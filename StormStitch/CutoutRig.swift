@@ -35,6 +35,10 @@ final class CutoutRig: SKNode {
             let joint: [CGFloat]
             let z: CGFloat
             let variants: [String: Variant]?
+            /// Another part this one hangs from (a spark on a fuse): it follows that part's move and turn.
+            let parent: String?
+            /// Whether it rides the torso's bob and sway. Missing means the standard set below.
+            let torso: Bool?
         }
         let name: String
         let parts: [Part]
@@ -50,7 +54,7 @@ final class CutoutRig: SKNode {
         let mirrored: Bool
     }
 
-    /// Parts carried by the torso. Anything else (the feet) is placed from the ground.
+    /// Parts carried by the torso when the JSON doesn't say. Anything else (the feet) stands on the ground.
     static let torsoParts: Set<String> = ["body", "arm-l", "arm-r", "sprout"]
 
     /// From the ground to the top of the tallest part, in rig units. Scale the rig by target / height.
@@ -64,6 +68,8 @@ final class CutoutRig: SKNode {
     private var looks: [String: [String: Look]] = [:]
     private var defaultLooks: [String: Look] = [:]
     private var inFront: Set<String> = []
+    private var parents: [String: String] = [:]
+    private var onTorso: Set<String> = []
 
     /// Nil when the character has no rig art yet, so callers can fall back to their painted poses.
     init?(named name: String) {
@@ -102,13 +108,23 @@ final class CutoutRig: SKNode {
             joints[part.name] = joint
             baseZ[part.name] = part.z
             sprites[part.name] = sprite
-            if CutoutRig.torsoParts.contains(part.name) {
+            if let parent = part.parent {
+                parents[part.name] = parent
+            } else if part.torso ?? CutoutRig.torsoParts.contains(part.name) {
+                onTorso.insert(part.name)
                 sprite.position = CGPoint(x: joint.x - bodyJoint.x, y: joint.y - bodyJoint.y)
                 torso.addChild(sprite)
             } else {
                 sprite.position = joint
                 addChild(sprite)
             }
+        }
+        // Hang each child part on its parent's sprite, positioned from the parent's pivot.
+        for (name, parent) in parents {
+            guard let sprite = sprites[name], let host = sprites[parent],
+                  let joint = joints[name], let hostJoint = joints[parent] else { return nil }
+            sprite.position = CGPoint(x: joint.x - hostJoint.x, y: joint.y - hostJoint.y)
+            host.addChild(sprite)
         }
     }
 
@@ -139,7 +155,9 @@ final class CutoutRig: SKNode {
                 continue
             }
             sprite.zRotation = p.degrees * .pi / 180
-            if CutoutRig.torsoParts.contains(name) {
+            if let parent = parents[name], let hostJoint = joints[parent] {
+                sprite.position = CGPoint(x: joint.x - hostJoint.x + p.dx, y: joint.y - hostJoint.y + p.dy)
+            } else if onTorso.contains(name) {
                 sprite.position = CGPoint(x: joint.x - bodyJoint.x + p.dx, y: joint.y - bodyJoint.y + p.dy)
             } else {
                 sprite.position = CGPoint(x: joint.x + p.dx, y: joint.y + p.dy)
@@ -224,7 +242,7 @@ extension CutoutRig {
         let lag: CGFloat = 0.09
         let lowLate = 0.5 + 0.5 * cos(4 * .pi * (t - lag - stanceMid))
         let swayLate = 3 * cos(2 * .pi * (t - lag - stanceMid))
-        return [
+        return extras(t).merging([
             "foot-l": foot(t, side: -1),
             "foot-r": foot(t + 0.5, side: 1),
             "arm-l": arm(swing, side: 1),
@@ -233,6 +251,16 @@ extension CutoutRig {
             // A little squash on each landing, a little stretch in the air.
             "body": PartPose(dy: bob, degrees: sway,
                              sx: 1 + 0.03 * low - 0.015 * (1 - low), sy: 1 - 0.04 * low + 0.02 * (1 - low))
+        ]) { _, own in own }
+    }
+
+    /// Motion for extra parts some monsters have. Parts a monster doesn't have are simply ignored.
+    static func extras(_ t: CGFloat) -> [String: PartPose] {
+        // Fizz's spark flickers: a quick pulse and spin, faster than the steps.
+        let pulse = 0.5 + 0.5 * sin(2 * .pi * t * 3)
+        let flicker = 0.75 + 0.4 * pulse
+        return [
+            "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker)
         ]
     }
 
@@ -243,7 +271,7 @@ extension CutoutRig {
         let arms: String? = t < 0.1 ? "back" : (t < 0.85 ? "up" : nil)
         let raise = smooth(0.1, 0.3, t)
         let wobble = 6 * sin(6 * .pi * t) * raise
-        return [
+        return extras(t).merging([
             "foot-l": PartPose(dy: 5 * up, variant: feet),
             "foot-r": PartPose(dy: 5 * up, variant: feet),
             // Arms wind back, then throw up in a cheer, wobbling a little at the top.
@@ -251,6 +279,6 @@ extension CutoutRig {
             "arm-r": PartPose(dy: 6 * raise * up, degrees: -wobble, variant: arms),
             "sprout": PartPose(degrees: 14 * cos(2 * .pi * t)),
             "body": PartPose(sx: 1 - 0.05 * up, sy: 1 + 0.07 * up)
-        ]
+        ]) { _, own in own }
     }
 }

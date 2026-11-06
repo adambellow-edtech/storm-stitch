@@ -20,10 +20,10 @@ def clean(path):
     return np.dstack([rgb, alpha]).clip(0, 255).astype(np.uint8)
 
 
-def split(path, min_area=3000, pad=4):
+def split(path, min_area=3000, pad=4, join=6):
     """Returns [(image, (left, top) of the image on the sheet)] left to right."""
     sheet = clean(path)
-    labels, _ = ndimage.label(ndimage.binary_dilation(sheet[..., 3] > 0, iterations=6))
+    labels, _ = ndimage.label(ndimage.binary_dilation(sheet[..., 3] > 0, iterations=join))
     found = []
     for i, box in enumerate(ndimage.find_objects(labels)):
         if (labels[box] == i + 1).sum() < min_area:

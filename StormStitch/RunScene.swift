@@ -134,6 +134,9 @@ final class RunScene: SKScene {
     /// Bramble built from separate painted parts on joints, for the run and the jump.
     /// Nil if the rig art isn't in the app; the painted poses cover everything then.
     var cutout: CutoutRig?
+    /// Which monster `cutout` belongs to, and every rig loaded so far (nil: that monster has no rig art yet).
+    var cutoutID = ""
+    var cutoutCache: [String: CutoutRig?] = [:]
     let brambleBack = SKTexture(imageNamed: "bramble-back")
     let brambleFront = SKTexture(imageNamed: "bramble-front")
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
@@ -443,12 +446,6 @@ final class RunScene: SKScene {
                                      size: CGSize(width: height * 452.0 / 640.0, height: height))
         brambleSprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
         rig.addChild(brambleSprite)
-        if let cutoutRig = CutoutRig(named: "bramble") {
-            cutoutRig.setScale(height / cutoutRig.height)
-            cutoutRig.isHidden = true
-            rig.addChild(cutoutRig)
-            cutout = cutoutRig
-        }
         rig.setScale(rigBaseScale)
         playerNode.addChild(rig)
         objectLayer.addChild(playerNode)
@@ -2029,8 +2026,10 @@ final class RunScene: SKScene {
         let stride = sin(runPhase * .pi)
 
         let hasPoses = monster.id == "bramble"
-        // The jointed rig runs and jumps; painted poses still cover slides, hits and the results screen.
-        let useCutout = cutout != nil && hasPoses && state != .over && hitPoseTimer <= 0 && !sliding
+        swapCutoutIfNeeded()
+        // The jointed rig runs and jumps. Bramble's painted poses still cover his slides and hits;
+        // monsters without painted poses use the rig for those too, squashed or shaken as a whole.
+        let useCutout = cutout != nil && state != .over && (!hasPoses || (hitPoseTimer <= 0 && !sliding))
         if sliding && state != .over {
             sx = hasPoses ? 1 : 1.25
             sy = hasPoses ? 1 : 0.55
@@ -2085,7 +2084,7 @@ final class RunScene: SKScene {
         if running && !hasPoses {
             if hitPoseTimer > 0 {
                 rig.zRotation += CGFloat(sin(hitPoseTimer * 40) * 0.3)
-            } else if !airborne && !sliding {
+            } else if !airborne && !sliding && !useCutout {
                 // A waddle, since the others only have one back view.
                 rig.zRotation += CGFloat(stride) * 0.09
             }
@@ -2143,6 +2142,28 @@ final class RunScene: SKScene {
         } else {
             playerNode.alpha = 1
         }
+    }
+
+    /// Loads the selected monster's jointed rig the first time it's needed and swaps it in.
+    func swapCutoutIfNeeded() {
+        guard cutoutID != monster.id else { return }
+        cutout?.removeFromParent()
+        let loaded: CutoutRig?
+        if let cached = cutoutCache[monster.id] {
+            loaded = cached
+        } else {
+            loaded = CutoutRig(named: monster.id)
+            cutoutCache[monster.id] = loaded
+        }
+        if let loaded {
+            // The same on-screen height as the monster's painted back view.
+            loaded.setScale(monster.runHeight / loaded.height)
+            loaded.isHidden = true
+            rig.addChild(loaded)
+        }
+        cutout = loaded
+        cutoutID = monster.id
+        brambleSprite.isHidden = false
     }
 
     func renderCamera() {

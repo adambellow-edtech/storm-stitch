@@ -15,6 +15,9 @@ import sys
 from PIL import Image, ImageDraw
 
 PARTS_DIR = sys.argv[1] if len(sys.argv) > 1 else "bramble4"
+# Optional per-character motion for extra parts (sparks, flags...): f(t, pose) -> {part: P(...)}.
+EXTRA_RUN = None
+EXTRA_JUMP = None
 
 
 def _pivots():
@@ -53,8 +56,20 @@ MANIFEST = {
     ],
 }
 
-# Parts that ride on the torso, so they bob and sway with the body.
+# Parts that ride on the torso, so they bob and sway with the body. A part can also name a "parent"
+# part it hangs from (a spark on a fuse): it then follows that part's position and turn.
 TORSO = {"body", "arm-l", "arm-r", "sprout"}
+
+
+def configure(parts_dir, manifest, extra_run=None, extra_jump=None, torso=None):
+    """Switch to another character."""
+    global PARTS_DIR, PIV, MANIFEST, EXTRA_RUN, EXTRA_JUMP, TORSO
+    PARTS_DIR = parts_dir
+    PIV = _pivots()
+    MANIFEST = manifest(PIV) if callable(manifest) else manifest
+    EXTRA_RUN, EXTRA_JUMP = extra_run, extra_jump
+    if torso:
+        TORSO = set(torso)
 # Drawings that show a foot kicked up toward the camera, so it passes in front of the body.
 IN_FRONT = {"kick"}
 
@@ -127,7 +142,7 @@ def run_pose(t):
     lag = 0.09
     low_late = 0.5 + 0.5 * math.cos(4 * math.pi * (t - lag - stance_mid))
     sway_late = 3 * math.cos(2 * math.pi * (t - lag - stance_mid))
-    return {
+    pose = {
         "foot-l": foot_pose(t, -1),
         "foot-r": foot_pose(t + 0.5, 1),
         "arm-l": arm_pose(swing, 1),
@@ -135,6 +150,7 @@ def run_pose(t):
         "sprout": P(dy=-6 * low_late, deg=-sway_late * 3, sx=1 + 0.05 * low_late, sy=1 - 0.08 * low_late),
         "body": P(dy=bob, deg=sway, sx=1 + 0.03 * low - 0.015 * (1 - low), sy=1 - 0.04 * low + 0.02 * (1 - low)),
     }
+    return _with_extras(pose, EXTRA_RUN, t)
 
 
 def jump_pose(t):
@@ -143,7 +159,7 @@ def jump_pose(t):
     feet = "push" if t < 0.12 else ("kick" if t < 0.8 else "pass")
     arms = "back" if t < 0.1 else ("up" if t < 0.85 else None)
     raise_k = smooth(0.1, 0.3, t)
-    return {
+    return _with_extras({
         "foot-l": P(dy=10 * up, variant=feet),
         "foot-r": P(dy=10 * up, variant=feet),
         # Arms wind back, then throw up in a cheer, wobbling a little at the top.
@@ -151,10 +167,19 @@ def jump_pose(t):
         "arm-r": P(dy=12 * raise_k * up, deg=-6 * math.sin(6 * math.pi * t) * raise_k, variant=arms),
         "sprout": P(deg=14 * math.cos(2 * math.pi * t)),
         "body": P(sx=1 - 0.05 * up, sy=1 + 0.07 * up),
-    }
+    }, EXTRA_JUMP, t)
 
 
-def load_images(folder=PARTS_DIR):
+def _with_extras(pose, extra, t):
+    if extra:
+        pose.update(extra(t, pose))
+    for part in MANIFEST["parts"]:
+        pose.setdefault(part["name"], P())
+    return pose
+
+
+def load_images(folder=None):
+    folder = folder or PARTS_DIR
     names = set()
     for part in MANIFEST["parts"]:
         names.add(part["image"])
@@ -184,13 +209,27 @@ def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
     def order(part):
         return 1 if pose[part["name"]]["variant"] in IN_FRONT else part["z"]
 
-    for part in sorted(MANIFEST["parts"], key=order):
+    # Where each part's pivot ends up and how far it's turned, parents first.
+    placed = {}
+    by_name = {p["name"]: p for p in MANIFEST["parts"]}
+
+    def place(part):
         name = part["name"]
+        if name in placed:
+            return placed[name]
         q = pose[name]
-        img, pivot = picture_for(part, q["variant"], images)
         jx, jy = part["joint"]
         deg = q["deg"]
-        if name in TORSO and name != "body":
+        parent = part.get("parent")
+        if parent:
+            ppart = by_name[parent]
+            px_, py_, pdeg = place(ppart)
+            r = math.radians(pdeg)
+            rx, ry = jx - ppart["joint"][0], jy - ppart["joint"][1]
+            jx = px_ + rx * math.cos(r) - ry * math.sin(r) + q["dx"]
+            jy = py_ + rx * math.sin(r) + ry * math.cos(r) + q["dy"]
+            deg += pdeg
+        elif name in TORSO and name != "body":
             bx, by = body_part["joint"]
             r = math.radians(body["deg"])
             rx, ry = jx - bx, jy - by
@@ -200,6 +239,14 @@ def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
         else:
             jx += q["dx"]
             jy += q["dy"]
+        placed[name] = (jx, jy, deg)
+        return placed[name]
+
+    for part in sorted(MANIFEST["parts"], key=order):
+        name = part["name"]
+        q = pose[name]
+        img, pivot = picture_for(part, q["variant"], images)
+        jx, jy, deg = place(part)
         jy += lift
         s = part["scale"] * scale
         im = img.resize((max(1, int(img.width * s * q["sx"])), max(1, int(img.height * s * q["sy"]))), Image.LANCZOS)
@@ -259,6 +306,10 @@ def export(art_dir, export_scale=0.5):
         entry = {"name": part["name"], "image": part["image"], "pivot": part["pivot"],
                  "joint": [round(part["joint"][0] * export_scale, 2), round(part["joint"][1] * export_scale, 2)],
                  "z": part["z"]}
+        if part.get("parent"):
+            entry["parent"] = part["parent"]
+        if part["name"] in TORSO:
+            entry["torso"] = True
         if part.get("variants"):
             entry["variants"] = {}
             for vname, v in part["variants"].items():
