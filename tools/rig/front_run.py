@@ -31,7 +31,7 @@ def center_body(band=(0.45, 0.7)):
 
 
 if step == "cut":
-    print(front_prep.front_prep(name))
+    print(front_prep.front_prep(name, floor=int(sys.argv[3]) if len(sys.argv) > 3 else None))
     center_body()
     body = Image.open(f"{D}/body.png")
     names = ["body-blink", "arm-rest", "arm-wave", "arm-cheer", "arm-slump"]

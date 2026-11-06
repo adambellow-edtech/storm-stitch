@@ -2,12 +2,12 @@ import cut, prep, json, os
 from PIL import Image
 
 
-def front_prep(name, join=12):
+def front_prep(name, join=12, floor=None):
     """Cuts <name>-front-sheet-body.png (body, body blinking) and <name>-front-sheet-arms.png
     (rest, wave, cheer, slump) into <name>-front/ with joints and mirrored right arms."""
     out = f"{name}-front"
     os.makedirs(out, exist_ok=True)
-    body = cut.split(prep.SRC + f"{name}-front-sheet-body.png", join=join)
+    body = cut.split(prep.SRC + f"{name}-front-sheet-body.png", join=join, floor=floor)
     arms = cut.split(prep.SRC + f"{name}-front-sheet-arms.png", join=12)
     if len(body) < 2 or len(arms) != 4:
         raise ValueError(f"{name}: body sheet has {len(body)} parts, arm sheet {len(arms)}")

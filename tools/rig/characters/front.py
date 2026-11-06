@@ -11,6 +11,9 @@ SETUPS = {
     # Wings go in front: his tail fan fills the space behind him.
     "gobbler": {"arm": [-190, 330], "scale": 0.5, "z": 1},
     "comet": {"arm": [-180, 330], "scale": 0.5},
+    "corrugo": {"arm": [-215, 410], "scale": 0.5},
+    "wickling": {"arm": [-170, 440], "scale": 0.45},
+    "squidge": {"arm": [-235, 360], "scale": 0.5},
 }
 
 
