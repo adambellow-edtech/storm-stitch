@@ -841,6 +841,15 @@ final class MusicSynth {
         samplesPerStep = Int(sr * 60 / bpm / 4)
         let chaseBpm: Float = 138
         chaseSamplesPerStep = Int(sr * 60 / chaseBpm / 4)
+        // Static tables initialize lazily (swift_once plus an allocation) on first touch. Touch them all
+        // here on the main thread so the render callback never does that work.
+        let tables = [MusicSynth.roots, MusicSynth.thirds, MusicSynth.bassPattern, MusicSynth.arpMinor,
+                      MusicSynth.arpMajor, MusicSynth.winterRoots, MusicSynth.winterThirds,
+                      MusicSynth.harvestRoots, MusicSynth.harvestThirds, MusicSynth.canyonRoots,
+                      MusicSynth.canyonThirds, MusicSynth.lagoonRoots, MusicSynth.lagoonThirds,
+                      MusicSynth.peaksPattern, MusicSynth.leadPattern, MusicSynth.chaseRoots,
+                      MusicSynth.chaseThirds, MusicSynth.chaseBass, MusicSynth.chaseLead]
+        _ = tables.count
     }
 
     private func freq(_ midi: Int) -> Float {

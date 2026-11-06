@@ -1060,6 +1060,10 @@ final class RunScene: SKScene {
         // A win gets the victory fanfare; reaching the gate behind a holiday rival is still a loss.
         var won = true
         if case .race(let holiday) = mode { won = spools > holiday.rivalTarget }
+        // A friend's challenge is a loss unless the score beats theirs (a live race's verdict may still be pending).
+        if case .challenge(_, let target, _) = mode, !LiveRace.shared.owns(mode) {
+            won = makeStats(finished: true).score > target
+        }
         audio.playSting(won ? .victory : .fail)
         haptics.success()
         concludeRun(caught: false, finished: true)
