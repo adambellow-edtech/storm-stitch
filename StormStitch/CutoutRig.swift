@@ -259,6 +259,8 @@ extension CutoutRig {
         // Fizz's spark flickers: a quick pulse and spin, faster than the steps.
         let pulse = 0.5 + 0.5 * sin(2 * .pi * t * 3)
         let flicker = 0.75 + 0.4 * pulse
+        let flap = sin(4 * .pi * t)
+        let flapDrawing: String? = flap > 0.4 ? "up" : (flap < -0.4 ? "down" : nil)
         return [
             "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker),
             // Gobbler's tail fan wiggles a beat behind the steps.
@@ -268,7 +270,10 @@ extension CutoutRig {
             "scarf": PartPose(degrees: 8 * sin(4 * .pi * t), variant: sin(4 * .pi * t) > 0 ? "flap" : nil),
             // Stickle's antennae bob twice a cycle, a beat behind the body.
             "antenna-l": PartPose(degrees: 8 * sin(4 * .pi * (t - 0.08))),
-            "antenna-r": PartPose(degrees: -8 * sin(4 * .pi * (t - 0.08)))
+            "antenna-r": PartPose(degrees: -8 * sin(4 * .pi * (t - 0.08))),
+            // Origo's wings flap twice a cycle, swapping between up, level and down.
+            "wing-l": PartPose(degrees: -6 * flap, variant: flapDrawing),
+            "wing-r": PartPose(degrees: 6 * flap, variant: flapDrawing)
         ].merging(tripod(t)) { own, _ in own }
     }
 
@@ -297,6 +302,9 @@ extension CutoutRig {
         var airborne = extras(t).merging(tripod(t, allUp: true)) { _, legs in legs }
         airborne["antenna-l"] = PartPose(degrees: -14 * up)
         airborne["antenna-r"] = PartPose(degrees: 14 * up)
+        // Origo spreads his wings and glides.
+        airborne["wing-l"] = PartPose(degrees: -4 * up, variant: "glide")
+        airborne["wing-r"] = PartPose(degrees: 4 * up, variant: "glide")
         return airborne.merging([
             "foot-l": PartPose(dy: 5 * up, variant: feet),
             "foot-r": PartPose(dy: 5 * up, variant: feet),
