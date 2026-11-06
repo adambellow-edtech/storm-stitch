@@ -18,6 +18,8 @@ struct SaveData: Codable {
     var rewindsUsed = 0
     var holidayWins: [String] = []
     var storySeen = false
+    /// Set once the player has seen their first pick-3 power gate. Optional so older saves still decode.
+    var powerGateSeen: Bool? = nil
     var music = true
     var sound = true
     var haptics = true

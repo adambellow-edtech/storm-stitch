@@ -25,6 +25,8 @@ final class RunScene: SKScene {
             case spool
             case scenery(SceneryKind, variant: Int)
             case gate
+            /// One of a pick-3 power gate's paper doors, by slot (0 left, 1 middle, 2 right).
+            case powerDoor(Int)
         }
 
         let kind: Kind
@@ -281,6 +283,9 @@ final class RunScene: SKScene {
     var tapTargets: [(node: SKNode, action: () -> Void)] = []
     var story: StoryPlayer?
     var hintIndex = 0
+    /// Pick-3 power gates (PowerGates.swift).
+    var powers = PowerState()
+    let powerRow = SKNode()
     var frontBlinkTimer = 2.5
     var lastRenderDt = 0.0
 
@@ -949,6 +954,7 @@ final class RunScene: SKScene {
             spawnScenery(atZ: z)
             z += 1.3
         }
+        resetPowers()
     }
 
     /// Totals for the run that just ended.
@@ -1098,7 +1104,7 @@ final class RunScene: SKScene {
 
         nextRowIn -= move
         if nextRowIn <= 0 {
-            if elapsed < config.length - 4.5 {
+            if elapsed < config.length - 4.5 && !rowsHeldForPowerGate {
                 spawnRow(atZ: spawnZ + nextRowIn)
             }
             let interval = lerp(config.intervalStart, config.intervalEnd, t)
@@ -1118,7 +1124,7 @@ final class RunScene: SKScene {
         if jumpBuffer > 0 { jumpBuffer -= dt }
         if streakTimer > 0 {
             streakTimer -= dt
-            if streakTimer <= 0 { streak = 0 }
+            if streakTimer <= 0 && !savePowerStreak() { streak = 0 }
         }
 
         checkCollisions()
@@ -1126,7 +1132,7 @@ final class RunScene: SKScene {
         stepExtras(dt)
         guard state == .running else { return }
 
-        let recover = tuning.stormRecoverRate * (monster.ability == .counterstorm ? 2.2 : 1)
+        let recover = tuning.stormRecoverRate * (monster.ability == .counterstorm ? 2.2 : 1) * stormBrakeMultiplier
         stormDistance = min(tuning.stormStart, stormDistance + recover * dt)
         if stormDistance <= 0 {
             endRun(caught: true)
@@ -1520,6 +1526,11 @@ final class RunScene: SKScene {
                 thing.resolved = true
                 continue
             }
+            if thing.isPowerDoor {
+                // Doors are picked by lane in PowerGates.swift; they never hit you.
+                thing.resolved = true
+                continue
+            }
             let crossed = thing.prevZ >= -0.35 && thing.z < 0.35
             if thing.z <= -0.35 && !crossed {
                 thing.resolved = true
@@ -1552,9 +1563,10 @@ final class RunScene: SKScene {
                 case .crate: hit = playerY < 1.4
                 }
                 if flying { hit = false }
-                if hit, hazard == .crate, (monster.ability == .snip && slideTimer > 0) || monster.ability == .barge {
+                if hit, hazard == .crate, ((monster.ability == .snip || powerLevel(.scissorSlide) > 0) && slideTimer > 0) || monster.ability == .barge {
                     thing.resolved = true
                     snipThrough(thing)
+                    scissorSlideBonus()
                     continue
                 }
                 if hit {
@@ -1562,7 +1574,7 @@ final class RunScene: SKScene {
                     takeHit(from: thing)
                     if state != .running { return }
                 }
-            case .scenery, .gate:
+            case .scenery, .gate, .powerDoor:
                 break
             }
         }
@@ -1574,12 +1586,13 @@ final class RunScene: SKScene {
         audio.play(.closeCall)
         haptics.spool()
         timeScale = 0.4
-        spools += 3
+        let bonus = 3 * closeCallMultiplier
+        spools += bonus
         closeCalls += 1
         gadgetCharge += monster.ability == .charge ? 6 : 3
         updateGadgetRing()
         meter = min(1, meter + config.meterPerSpool * 2.5)
-        popText("Close call! +3", size: 24, color: .white, at: playerScreenPoint(offsetY: 120), rise: 50, life: 0.9)
+        popText("Close call! +\(bonus)", size: 24, color: .white, at: playerScreenPoint(offsetY: 120), rise: 50, life: 0.9)
     }
 
     func collect(_ thing: Thing) {
@@ -1587,7 +1600,7 @@ final class RunScene: SKScene {
         retire(thing)
         streak += 1
         // Gobbler's feast: during a streak of 10 or more, every spool counts double.
-        let worth = monster.ability == .feast && streak >= 10 ? 2 : 1
+        let worth = (monster.ability == .feast && streak >= 10 ? 2 : 1) * powerSpoolMultiplier + luckySpoolBonus()
         spools += worth
         gadgetCharge += monster.ability == .charge ? worth * 2 : worth
         updateGadgetRing()
@@ -1614,6 +1627,7 @@ final class RunScene: SKScene {
         guard invulnerable <= 0 else { return }
         if shieldActive {
             shieldActive = false
+            refillPatchArmor()
             invulnerable = 0.9
             audio.play(.closeCall)
             haptics.lane()
@@ -1697,7 +1711,7 @@ final class RunScene: SKScene {
             return
         }
         slideTimer = 0
-        velocityY = tuning.jumpVelocity * (monster.ability == .bounce ? 1.15 : 1)
+        velocityY = tuning.jumpVelocity * (monster.ability == .bounce ? 1.15 : 1) * springStepMultiplier
         playerY = 0.0001
         audio.play(.jump, volume: 0.7)
         haptics.jump()
@@ -1999,6 +2013,10 @@ final class RunScene: SKScene {
                 }
             case .gate:
                 break
+            case .powerDoor:
+                // Doors stand up out of the page early, so there's time to read them.
+                let rise = max(0, min(1, (spawnZ - 2 - thing.z) / 4))
+                yScale *= CGFloat(easeOutBack(rise))
             }
             sprite.xScale = xScale
             sprite.yScale = yScale

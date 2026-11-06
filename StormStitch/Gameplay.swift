@@ -24,6 +24,7 @@ struct RunSnapshot {
     var fullyStitched: Bool
     var gateSpawned: Bool
     var rng: GameRNG
+    var powers: PowerState
 }
 
 extension RunScene {
@@ -164,6 +165,9 @@ extension RunScene {
                 snapshots.removeAll { elapsed - $0.elapsed > 4 }
             }
         }
+
+        stepPowerGates(dt)
+        guard state == .running else { return }
 
         // The finish gate rolls in near the end of a timed run.
         if config.length.isFinite && !gateSpawned && elapsed >= config.length - 3 {
@@ -581,7 +585,7 @@ extension RunScene {
                     meter: meter, stormDistance: stormDistance, playerX: playerX, laneIndex: laneIndex,
                     laneFromX: laneFromX, laneToX: laneToX, laneProgress: laneProgress, playerY: playerY,
                     velocityY: velocityY, nextRowIn: nextRowIn, fullyStitched: fullyStitched,
-                    gateSpawned: gateSpawned, rng: rng)
+                    gateSpawned: gateSpawned, rng: rng, powers: powers)
     }
 
     /// Puts the run back the way it was about 3 seconds ago. Returns false if there isn't enough history yet.
@@ -651,6 +655,7 @@ extension RunScene {
         fullyStitched = snap.fullyStitched
         gateSpawned = snap.gateSpawned
         rng = snap.rng
+        powers = snap.powers
         snapshots.removeAll { $0.elapsed > snap.elapsed }
         slideTimer = 0
         hitPoseTimer = 0
@@ -668,6 +673,7 @@ extension RunScene {
         audio.play(.whoosh)
         popText("Rewind!", size: 34, color: Palette.stitchGold, at: playerScreenPoint(offsetY: 150), rise: 30, life: 1)
         updateHUD()
+        refreshPowerRow()
         return true
     }
 

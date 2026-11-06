@@ -18,6 +18,9 @@ final class Tuning: ObservableObject {
         static let stormHitPenalty = 2.6
         static let stormRecoverRate = 0.3
         static let runLength = 120.0
+        static let powerGate1 = PowerTuning.gateTimes[0]
+        static let powerGate2 = PowerTuning.gateTimes[1]
+        static let powerGate3 = PowerTuning.gateTimes[2]
     }
 
     /// Forward speed at the start and end of a run (units per second).
@@ -40,6 +43,10 @@ final class Tuning: ObservableObject {
     @Published var stormHitPenalty = Defaults.stormHitPenalty
     @Published var stormRecoverRate = Defaults.stormRecoverRate
     @Published var runLength = Defaults.runLength
+    /// Seconds into a run when each pick-3 power gate reaches you.
+    @Published var powerGate1 = Defaults.powerGate1
+    @Published var powerGate2 = Defaults.powerGate2
+    @Published var powerGate3 = Defaults.powerGate3
     @Published var hapticsOn = true
     @Published var musicOn = true
     @Published var soundOn = true
@@ -62,6 +69,9 @@ final class Tuning: ObservableObject {
         stormHitPenalty = Defaults.stormHitPenalty
         stormRecoverRate = Defaults.stormRecoverRate
         runLength = Defaults.runLength
+        powerGate1 = Defaults.powerGate1
+        powerGate2 = Defaults.powerGate2
+        powerGate3 = Defaults.powerGate3
         hapticsOn = true
         musicOn = true
         soundOn = true
