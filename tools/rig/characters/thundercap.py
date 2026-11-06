@@ -15,7 +15,7 @@ def manifest(piv):
         "parts": [
             {"name": "bolt", "image": "bolt", "scale": 0.5, "pivot": piv["bolt"], "joint": [0, FLOAT + 60], "z": -1,
              "variants": v},
-            {"name": "sprout", "image": "crest", "scale": 0.55, "pivot": [0.5, 0.25], "joint": [0, FLOAT + 560], "z": -1},
+            {"name": "sprout", "image": "crest", "scale": 0.55, "pivot": [0.5, 0.25], "joint": [0, FLOAT + 560], "z": -1.5},
             {"name": "spark-a", "image": "sparkle", "scale": 0.5, "pivot": [0.5, 0.5], "joint": [-380, FLOAT + 420], "z": 1},
             {"name": "spark-b", "image": "sparkle", "scale": 0.35, "pivot": [0.5, 0.5], "joint": [380, FLOAT + 250], "z": 1},
             {"name": "body", "image": "body", "scale": 0.8, "pivot": [0.5, 0.0], "joint": [0, FLOAT], "z": 0},

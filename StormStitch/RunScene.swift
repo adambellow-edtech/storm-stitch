@@ -2159,6 +2159,9 @@ final class RunScene: SKScene {
             // The same on-screen height as the monster's painted back view.
             loaded.setScale(monster.runHeight / loaded.height)
             loaded.isHidden = true
+            // Parts sit as low as z -4 (tails, back legs). Lift the rig so even those draw above the
+            // player's shadow and nearby hazards, like the painted sprite did.
+            loaded.zPosition = 4
             rig.addChild(loaded)
         }
         cutout = loaded
