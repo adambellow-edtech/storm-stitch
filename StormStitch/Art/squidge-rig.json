@@ -1,0 +1,135 @@
+{
+  "name": "squidge",
+  "view": "back",
+  "parts": [
+    {
+      "name": "arm-l",
+      "image": "arm-hang",
+      "pivot": [
+        0.8616,
+        0.8539
+      ],
+      "joint": [
+        -80.0,
+        145.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-curl",
+          "pivot": [
+            0.8409,
+            0.8461
+          ]
+        },
+        "back": {
+          "image": "arm-back",
+          "pivot": [
+            0.8785,
+            0.8449
+          ]
+        },
+        "up": {
+          "image": "arm-up",
+          "pivot": [
+            0.8749,
+            0.8525
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-r",
+      "image": "arm-hang-r",
+      "pivot": [
+        0.1384,
+        0.8539
+      ],
+      "joint": [
+        80.0,
+        145.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-curl-r",
+          "pivot": [
+            0.1591,
+            0.8461
+          ]
+        },
+        "back": {
+          "image": "arm-back-r",
+          "pivot": [
+            0.1215,
+            0.8449
+          ]
+        },
+        "up": {
+          "image": "arm-up-r",
+          "pivot": [
+            0.1251,
+            0.8525
+          ]
+        }
+      }
+    },
+    {
+      "name": "sprout",
+      "image": "boat",
+      "pivot": [
+        0.5,
+        0.12
+      ],
+      "joint": [
+        0.0,
+        395.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "flag",
+      "image": "flag-a",
+      "pivot": [
+        0.1114,
+        0.0282
+      ],
+      "joint": [
+        15.0,
+        485.0
+      ],
+      "z": 0.5,
+      "parent": "sprout",
+      "variants": {
+        "flap": {
+          "image": "flag-b",
+          "pivot": [
+            0.8643,
+            0.0281
+          ]
+        }
+      }
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        75.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 557.45,
+  "inFront": [
+    "kick"
+  ]
+}

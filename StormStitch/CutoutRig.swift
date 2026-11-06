@@ -285,7 +285,9 @@ extension CutoutRig {
             // Thundercap's bolt flickers to a new drawing four times a cycle; his sparkles twinkle.
             "bolt": PartPose(degrees: 6 * sin(8 * .pi * t), variant: boltDrawings[Int(4 * (t - floor(t))) % 4]),
             "spark-a": twinkle(t),
-            "spark-b": twinkle(t + 0.5)
+            "spark-b": twinkle(t + 0.5),
+            // Squidge's flag flaps between its two drawings on top of his boat hat.
+            "flag": PartPose(degrees: 4 * sin(4 * .pi * t), variant: sin(4 * .pi * t) > 0 ? "flap" : nil)
         ].merging(tripod(t)) { own, _ in own }
     }
 
