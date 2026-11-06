@@ -1016,6 +1016,7 @@ final class RunScene: SKScene {
         rivalLabel.isHidden = true
         rivalSprite.isHidden = true
         clearActiveEffects()
+        liveRaceRunEnded(caught: caught, finished: finished, stars: stars)
         showRunResults(caught: caught, finished: finished, stars: stars, unlocks: unlocks)
     }
 
@@ -1081,6 +1082,7 @@ final class RunScene: SKScene {
         case .title, .menu, .story, .over:
             ambient(dt)
         }
+        stepLiveRace(realDt)
         render(dt: realDt)
     }
 

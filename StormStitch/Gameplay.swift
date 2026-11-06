@@ -107,7 +107,7 @@ extension RunScene {
             let world = World.all[World.index(ofStage: index)]
             banner = "\(world.id == "meadow" ? "Stage" : world.name) \(Stage.all[index].number): \(Stage.all[index].name)"
         case .daily(let storm): banner = "\(storm.rule.emoji) \(storm.rule.name)"
-        case .challenge(let storm, let target, let from): banner = "Beat \(from): \(target.formatted()) \(storm.rule.emoji)"
+        case .challenge(let storm, let target, let from): banner = liveRaceBanner ?? "Beat \(from): \(target.formatted()) \(storm.rule.emoji)"
         case .race(let holiday): banner = "\(holiday.raceName): beat \(holiday.rivalName)!"
         case .endless: banner = "Endless: outrun the storm!"
         }
