@@ -1,0 +1,184 @@
+{
+  "name": "corrugo",
+  "view": "back",
+  "parts": [
+    {
+      "name": "foot-l",
+      "image": "foot-plant",
+      "pivot": [
+        0.505,
+        0.9873
+      ],
+      "joint": [
+        -37.5,
+        87.5
+      ],
+      "z": -3,
+      "variants": {
+        "push": {
+          "image": "foot-push",
+          "pivot": [
+            0.6057,
+            0.9872
+          ]
+        },
+        "kick": {
+          "image": "foot-kick",
+          "pivot": [
+            0.6737,
+            0.9875
+          ]
+        },
+        "pass": {
+          "image": "foot-pass",
+          "pivot": [
+            0.5583,
+            0.9835
+          ]
+        }
+      }
+    },
+    {
+      "name": "foot-r",
+      "image": "foot-plant-r",
+      "pivot": [
+        0.495,
+        0.9873
+      ],
+      "joint": [
+        37.5,
+        87.5
+      ],
+      "z": -3,
+      "variants": {
+        "push": {
+          "image": "foot-push-r",
+          "pivot": [
+            0.3943,
+            0.9872
+          ]
+        },
+        "kick": {
+          "image": "foot-kick-r",
+          "pivot": [
+            0.3263,
+            0.9875
+          ]
+        },
+        "pass": {
+          "image": "foot-pass-r",
+          "pivot": [
+            0.4417,
+            0.9835
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-l",
+      "image": "arm-hang",
+      "pivot": [
+        0.8101,
+        0.8844
+      ],
+      "joint": [
+        -107.5,
+        280.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-fwd",
+          "pivot": [
+            0.8042,
+            0.8604
+          ]
+        },
+        "back": {
+          "image": "arm-back",
+          "pivot": [
+            0.8219,
+            0.8857
+          ]
+        },
+        "up": {
+          "image": "arm-up",
+          "pivot": [
+            0.8315,
+            0.5692
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-r",
+      "image": "arm-hang-r",
+      "pivot": [
+        0.1899,
+        0.8844
+      ],
+      "joint": [
+        107.5,
+        280.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-fwd-r",
+          "pivot": [
+            0.1958,
+            0.8604
+          ]
+        },
+        "back": {
+          "image": "arm-back-r",
+          "pivot": [
+            0.1781,
+            0.8857
+          ]
+        },
+        "up": {
+          "image": "arm-up-r",
+          "pivot": [
+            0.1685,
+            0.5692
+          ]
+        }
+      }
+    },
+    {
+      "name": "sprout",
+      "image": "flaps",
+      "pivot": [
+        0.5,
+        0.2
+      ],
+      "joint": [
+        0.0,
+        417.5
+      ],
+      "z": -1,
+      "torso": true
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        60.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 484.46,
+  "inFront": [
+    "kick"
+  ]
+}
