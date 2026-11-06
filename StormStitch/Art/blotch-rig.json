@@ -1,0 +1,88 @@
+{
+  "name": "blotch",
+  "view": "back",
+  "parts": [
+    {
+      "name": "skirt",
+      "image": "skirt",
+      "pivot": [
+        0.5032,
+        0.9714
+      ],
+      "joint": [
+        0.0,
+        184.0
+      ],
+      "z": -1,
+      "variants": {
+        "left": {
+          "image": "skirt-left",
+          "pivot": [
+            0.5451,
+            0.9681
+          ]
+        },
+        "right": {
+          "image": "skirt-right",
+          "pivot": [
+            0.4918,
+            0.9713
+          ]
+        },
+        "splat": {
+          "image": "skirt-splat",
+          "pivot": [
+            0.5144,
+            0.9534
+          ]
+        }
+      }
+    },
+    {
+      "name": "drop-l",
+      "image": "drop-big",
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "joint": [
+        -165.0,
+        125.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "drop-r",
+      "image": "drop-small",
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "joint": [
+        165.0,
+        150.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        94.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 395.95,
+  "inFront": [
+    "kick"
+  ]
+}

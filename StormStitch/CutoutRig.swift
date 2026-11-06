@@ -260,6 +260,7 @@ extension CutoutRig {
         let pulse = 0.5 + 0.5 * sin(2 * .pi * t * 3)
         let flicker = 0.75 + 0.4 * pulse
         let flap = sin(4 * .pi * t)
+        let sway = sin(2 * .pi * t)
         let flapDrawing: String? = flap > 0.4 ? "up" : (flap < -0.4 ? "down" : nil)
         return [
             "spark": PartPose(degrees: 40 * sin(2 * .pi * t * 2), sx: flicker, sy: flicker),
@@ -273,8 +274,20 @@ extension CutoutRig {
             "antenna-r": PartPose(degrees: -8 * sin(4 * .pi * (t - 0.08))),
             // Origo's wings flap twice a cycle, swapping between up, level and down.
             "wing-l": PartPose(degrees: -6 * flap, variant: flapDrawing),
-            "wing-r": PartPose(degrees: 6 * flap, variant: flapDrawing)
+            "wing-r": PartPose(degrees: 6 * flap, variant: flapDrawing),
+            // Blotch's ooze skirt ripples side to side, and drops flick off his sides.
+            "skirt": PartPose(sx: 1 + 0.05 * abs(sway), sy: 1 - 0.06 * abs(sway),
+                              variant: sway > 0.45 ? "left" : (sway < -0.45 ? "right" : nil)),
+            "drop-l": flick(t, side: -1),
+            "drop-r": flick(t + 0.5, side: 1)
         ].merging(tripod(t)) { own, _ in own }
+    }
+
+    /// A drop flung off Blotch's side once a cycle, arcing out and shrinking away.
+    static func flick(_ t: CGFloat, side: CGFloat) -> PartPose {
+        let k = t - floor(t)
+        let size = max(0.001, 1 - pow(k, 1.5))
+        return PartPose(dx: side * 80 * k, dy: 60 * sin(.pi * k) - 30 * k, degrees: side * 200 * k, sx: size, sy: size)
     }
 
     /// Stickle's six legs: left front and back step with the right middle, then the other three.
@@ -305,6 +318,12 @@ extension CutoutRig {
         // Origo spreads his wings and glides.
         airborne["wing-l"] = PartPose(degrees: -4 * up, variant: "glide")
         airborne["wing-r"] = PartPose(degrees: 4 * up, variant: "glide")
+        // Blotch stretches up, then lands in a splat; his drops stay put while he's airborne.
+        let landing = t > 0.88
+        airborne["skirt"] = PartPose(sx: 1 - 0.1 * up + (landing ? 0.15 : 0), sy: 1 + 0.15 * up - (landing ? 0.3 : 0),
+                                     variant: landing ? "splat" : nil)
+        airborne["drop-l"] = PartPose(sx: 0.001, sy: 0.001)
+        airborne["drop-r"] = PartPose(sx: 0.001, sy: 0.001)
         return airborne.merging([
             "foot-l": PartPose(dy: 5 * up, variant: feet),
             "foot-r": PartPose(dy: 5 * up, variant: feet),
