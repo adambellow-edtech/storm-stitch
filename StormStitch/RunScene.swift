@@ -1640,7 +1640,7 @@ final class RunScene: SKScene {
         confettiBurst(at: point)
         flash.removeAllActions()
         flash.color = .white
-        flash.alpha = 0.45
+        flash.alpha = 0.45 * (Motion.reduced ? Motion.reducedStrength : 1)
         flash.run(.fadeOut(withDuration: 0.25))
 
         if heartsLeft >= 0 && heartsLeft < hearts.count {
@@ -1790,7 +1790,7 @@ final class RunScene: SKScene {
     func shake(strength: CGFloat) {
         camRig.removeAction(forKey: "shake")
         let base = camRig.position
-        let s = strength
+        let s = strength * (Motion.reduced ? Motion.reducedStrength : 1)
         camRig.run(.sequence([
             .moveBy(x: s, y: s * 0.4, duration: 0.03),
             .moveBy(x: -s * 2, y: -s * 0.6, duration: 0.05),
@@ -1804,6 +1804,8 @@ final class RunScene: SKScene {
         flash.removeAllActions()
         flash.color = UIColor(hex: 0xE8E9FF)
         flash.alpha = 0
+        // Reduce Motion keeps a soft glow instead of a strobing double flash.
+        let strength = strength * (Motion.reduced ? Double(Motion.reducedStrength) : 1)
         flash.run(.sequence([
             .fadeAlpha(to: CGFloat(strength * 0.6), duration: 0.04),
             .fadeAlpha(to: 0.05, duration: 0.08),

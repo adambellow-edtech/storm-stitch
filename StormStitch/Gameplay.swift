@@ -411,7 +411,7 @@ extension RunScene {
         haptics.success()
         flash.removeAllActions()
         flash.color = .white
-        flash.alpha = 0.7
+        flash.alpha = 0.7 * (Motion.reduced ? Motion.reducedStrength : 1)
         flash.run(.fadeOut(withDuration: 0.6))
         var z = -2.0
         while z < spawnZ {

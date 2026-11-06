@@ -1260,15 +1260,38 @@ extension RunScene {
             let star = SKSpriteNode(texture: starArt.texture, size: CGSize(width: 44 * k, height: 44 * k))
             star.position = CGPoint(x: CGFloat(i - 1) * 84 * k, y: innerTop - 88 * k)
             star.zPosition = 1
-            star.setScale(0)
+            // Earned stars stamp down: they drop in big and tilted, overshoot, settle, and sparkle.
+            // Empty stars just fade in, so the earned ones stand out.
+            let delay = 0.38 + Double(i) * 0.2
+            if Motion.reduced || !has {
+                star.alpha = 0
+                star.run(.sequence([.wait(forDuration: delay), .fadeAlpha(to: has ? 1 : 0.75, duration: 0.18)]))
+            } else {
+                star.setScale(1.9)
+                star.alpha = 0
+                star.zRotation = 0.5
+                star.run(.sequence([
+                    .wait(forDuration: delay),
+                    .group([
+                        .fadeIn(withDuration: 0.08),
+                        .scale(to: 1, duration: 0.26).overshoot(),
+                        .rotate(toAngle: 0, duration: 0.26).glide()
+                    ])
+                ]))
+            }
             star.run(.sequence([
-                .wait(forDuration: 0.25 + Double(i) * 0.18),
-                .scale(to: 1.25, duration: 0.12),
-                .scale(to: 1, duration: 0.1),
-                .run { [weak self] in
-                    if has {
-                        self?.audio.chime(step: 2 + i * 2)
-                        self?.haptics.spool()
+                .wait(forDuration: delay + 0.12),
+                .run { [weak self, weak star, weak card] in
+                    guard has, let self else { return }
+                    self.audio.chime(step: 2 + i * 2)
+                    self.haptics.spool()
+                    if !Motion.reduced, let star, let card {
+                        // The effects layer sits under the results overlay, so lift the sparkles above the card.
+                        let sparks = self.emitter(texture: self.art.spark.texture, at: card.convert(star.position, to: self),
+                                                  count: 12, color: Palette.stitchGold, speed: 140, spread: .pi * 2,
+                                                  angle: .pi / 2, life: 0.5, gravity: -200, scale: 0.6)
+                        sparks.move(toParent: self.overlay)
+                        sparks.zPosition = 5
                     }
                 }
             ]))
@@ -1281,24 +1304,34 @@ extension RunScene {
         }
 
         // Stats.
-        let seconds = Int(stats.elapsed)
-        var cells: [(String, String)] = [
-            ("Spools", "\(stats.spools)"),
-            ("Distance", "\(Int(stats.distance)) m"),
-            ("Time", "\(seconds / 60):\(String(format: "%02d", seconds % 60))")
+        // Each stat is a number plus how to print it, so it can count up from zero.
+        let clock: (Int) -> String = { "\($0 / 60):\(String(format: "%02d", $0 % 60))" }
+        let plain: (Int) -> String = { "\($0)" }
+        var cells: [(name: String, value: Int, format: (Int) -> String)] = [
+            ("Spools", stats.spools, plain),
+            ("Distance", Int(stats.distance), { "\($0) m" }),
+            ("Time", Int(stats.elapsed), clock)
         ]
         if mode.isDailyLike || mode == .endless {
-            cells.append(("Score", stats.score.formatted()))
+            cells.append(("Score", stats.score, { $0.formatted() }))
         } else {
-            cells.append(("Stitched", "\(stats.meterPercent)%"))
+            cells.append(("Stitched", stats.meterPercent, { "\($0)%" }))
         }
-        cells.append(("Streak", "\(stats.bestStreak)"))
-        cells.append(("Close calls", "\(stats.closeCalls)"))
+        cells.append(("Streak", stats.bestStreak, plain))
+        cells.append(("Close calls", stats.closeCalls, plain))
         for (index, cell) in cells.enumerated() {
             let column = CGFloat(index % 3 - 1)
             let rowY = innerTop - (index < 3 ? 150 : 192) * k
             let value = SKLabelNode(fontNamed: "Fredoka-SemiBold")
-            value.text = cell.1
+            value.text = cell.format(cell.value)
+            if !Motion.reduced && cell.value > 0 {
+                // Tick up from zero while the stars land; the top row first, then the bottom row.
+                value.text = cell.format(0)
+                value.run(.sequence([
+                    .wait(forDuration: 0.35 + (index < 3 ? 0 : 0.15)),
+                    .countUp(to: cell.value, duration: 0.75, format: cell.format)
+                ]))
+            }
             value.fontSize = 18 * k
             value.fontColor = Palette.ink
             value.verticalAlignmentMode = .center
@@ -1306,7 +1339,7 @@ extension RunScene {
             value.zPosition = 1
             card.addChild(value)
             let name = SKLabelNode(fontNamed: "NunitoSans-Bold")
-            name.text = cell.0
+            name.text = cell.name
             name.fontSize = 10 * k
             name.fontColor = Palette.stormDark
             name.verticalAlignmentMode = .center
@@ -1315,12 +1348,23 @@ extension RunScene {
             card.addChild(name)
         }
 
-        card.setScale(0.7)
+        // The card rises into place and pops slightly past full size before settling.
+        let home = card.position
         card.alpha = 0
-        card.run(.group([.fadeIn(withDuration: 0.15), .scale(to: 1, duration: 0.25)]))
+        if Motion.reduced {
+            card.run(.fadeIn(withDuration: 0.2))
+        } else {
+            card.setScale(0.82)
+            card.position.y -= 40
+            card.run(.group([
+                .fadeIn(withDuration: 0.12),
+                .scale(to: 1, duration: 0.34).overshoot(),
+                .move(to: home, duration: 0.34).glide()
+            ]))
+        }
 
         // Unlocks, one after another.
-        var y = card.position.y - cardH / 2 - 34
+        var y = home.y - cardH / 2 - 34
         for (i, event) in unlocks.prefix(3).enumerated() {
             let banner = SKNode()
             banner.position = CGPoint(x: w / 2, y: y)
@@ -1350,11 +1394,23 @@ extension RunScene {
             for sprite in [text, detail] where sprite.size.width > room {
                 sprite.setScale(room / sprite.size.width)
             }
+            // Unlocks slide up from below and pop, one after another, once the stars have landed.
             banner.alpha = 0
-            banner.setScale(0.6)
+            let arrive: SKAction
+            if Motion.reduced {
+                arrive = .fadeIn(withDuration: 0.2)
+            } else {
+                banner.setScale(0.85)
+                banner.position.y -= 28
+                arrive = .group([
+                    .fadeIn(withDuration: 0.12),
+                    .scale(to: 1, duration: 0.3).overshoot(),
+                    .move(to: CGPoint(x: w / 2, y: y), duration: 0.3).glide()
+                ])
+            }
             banner.run(.sequence([
-                .wait(forDuration: 0.9 + Double(i) * 0.5),
-                .group([.fadeIn(withDuration: 0.15), .scale(to: 1, duration: 0.2)]),
+                .wait(forDuration: 1.15 + Double(i) * 0.45),
+                arrive,
                 .run { [weak self] in
                     self?.audio.play(.stitchFull, volume: 0.5)
                     self?.haptics.success()
