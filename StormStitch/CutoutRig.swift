@@ -322,6 +322,39 @@ extension CutoutRig {
         return legs
     }
 
+    /// Ducking under a ruler, t from 0 (dropping into it) to 1 (popping back up).
+    /// Arms sweep back, feet tuck, the body sinks and leans forward, top pieces flatten.
+    static func slide(_ t: CGFloat) -> [String: PartPose] {
+        let down = smooth(0, 0.15, t) * (1 - smooth(0.85, 1, t))
+        let tuck: String? = down > 0.3 ? "pass" : nil
+        var pose = extras(t * 2)
+        pose.merge([
+            "foot-l": PartPose(dy: -4 * down, variant: tuck),
+            "foot-r": PartPose(dy: -4 * down, variant: tuck),
+            "arm-l": PartPose(dy: -6 * down, degrees: -20 * down, variant: down > 0.3 ? "back" : nil),
+            "arm-r": PartPose(dy: -6 * down, degrees: 20 * down, variant: down > 0.3 ? "back" : nil),
+            "sprout": PartPose(dy: -3 * down, degrees: -8 * down, sx: 1 + 0.06 * down, sy: 1 - 0.12 * down),
+            "body": PartPose(dy: -10 * down, sx: 1 + 0.08 * down, sy: 1 - 0.12 * down)
+        ]) { _, own in own }
+        return pose
+    }
+
+    /// Taking a hit, t from 0 (the impact) to 1 (recovered). Arms fly up, the body jolts and wobbles.
+    static func hit(_ t: CGFloat) -> [String: PartPose] {
+        let shock = 1 - smooth(0, 1, t)
+        let wobble = sin(t * 18) * shock
+        var pose = extras(t)
+        pose.merge([
+            "foot-l": PartPose(dy: 6 * shock, variant: shock > 0.4 ? "push" : nil),
+            "foot-r": PartPose(dy: 3 * shock, variant: shock > 0.4 ? "pass" : nil),
+            "arm-l": PartPose(dy: 6 * shock, degrees: -30 * wobble, variant: shock > 0.3 ? "up" : nil),
+            "arm-r": PartPose(dy: 6 * shock, degrees: 30 * wobble, variant: shock > 0.3 ? "up" : nil),
+            "sprout": PartPose(degrees: 25 * wobble),
+            "body": PartPose(dy: 4 * shock, degrees: 8 * wobble, sx: 1 - 0.06 * shock, sy: 1 + 0.08 * shock)
+        ]) { _, own in own }
+        return pose
+    }
+
     /// A jump, t from 0 at take-off to 1 at landing. The game moves the rig up and down; this only poses it.
     static func jump(_ t: CGFloat) -> [String: PartPose] {
         let up = sin(.pi * t)

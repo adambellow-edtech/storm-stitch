@@ -2028,11 +2028,12 @@ final class RunScene: SKScene {
         let hasPoses = monster.id == "bramble"
         swapCutoutIfNeeded()
         // The jointed rig runs and jumps. Bramble's painted poses still cover his slides and hits;
-        // monsters without painted poses use the rig for those too, squashed or shaken as a whole.
+        // monsters without painted poses get rig poses for those too (CutoutRig.slide and .hit).
         let useCutout = cutout != nil && state != .over && (!hasPoses || (hitPoseTimer <= 0 && !sliding))
         if sliding && state != .over {
-            sx = hasPoses ? 1 : 1.25
-            sy = hasPoses ? 1 : 0.55
+            // A rigged slide ducks with its own pose, so it only needs a little extra squash.
+            sx = hasPoses ? 1 : (useCutout ? 1.1 : 1.25)
+            sy = hasPoses ? 1 : (useCutout ? 0.78 : 0.55)
         } else if landSquash > 0 {
             let amount = CGFloat(landSquash / landSquashTime)
             sx = 1 + 0.18 * amount
@@ -2082,7 +2083,8 @@ final class RunScene: SKScene {
             setPose("\(id)-back", height: monster.runHeight)
         }
         if running && !hasPoses {
-            if hitPoseTimer > 0 {
+            if hitPoseTimer > 0 && !useCutout {
+                // The rig wobbles in its own hit pose; only the single painted view needs the shake.
                 rig.zRotation += CGFloat(sin(hitPoseTimer * 40) * 0.3)
             } else if !airborne && !sliding && !useCutout {
                 // A waddle, since the others only have one back view.
@@ -2103,7 +2105,12 @@ final class RunScene: SKScene {
             brambleSprite.isHidden = useCutout
             if useCutout {
                 let pose: [String: PartPose]
-                if airborne {
+                if hitPoseTimer > 0 {
+                    // Knocked off balance: 0 the moment of the hit, 1 when the hit pose ends.
+                    pose = CutoutRig.hit(CGFloat(1 - hitPoseTimer / 0.45))
+                } else if sliding {
+                    pose = CutoutRig.slide(CGFloat(1 - slideTimer / max(tuning.slideDuration, 0.01)))
+                } else if airborne {
                     // Rising at full jump speed is take-off (0), the peak is 0.5, falling fast is landing (1).
                     let v = velocityY / max(tuning.jumpVelocity, 0.1)
                     pose = CutoutRig.jump(CGFloat(max(0, min(1, 0.5 - 0.5 * v))))

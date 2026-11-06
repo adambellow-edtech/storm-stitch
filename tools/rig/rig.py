@@ -327,3 +327,32 @@ def export(art_dir, export_scale=0.5):
 
 if __name__ == "__main__":
     preview(sys.argv[2] if len(sys.argv) > 2 else ".")
+
+
+def slide_pose(t):
+    """Matches CutoutRig.slide in the game (rig units are 2x the game's)."""
+    down = smooth(0, 0.15, t) * (1 - smooth(0.85, 1, t))
+    tuck = "pass" if down > 0.3 else None
+    pose = {
+        "foot-l": P(dy=-8 * down, variant=tuck), "foot-r": P(dy=-8 * down, variant=tuck),
+        "arm-l": P(dy=-12 * down, deg=-20 * down, variant="back" if down > 0.3 else None),
+        "arm-r": P(dy=-12 * down, deg=20 * down, variant="back" if down > 0.3 else None),
+        "sprout": P(dy=-6 * down, deg=-8 * down, sx=1 + 0.06 * down, sy=1 - 0.12 * down),
+        "body": P(dy=-20 * down, sx=1 + 0.08 * down, sy=1 - 0.12 * down),
+    }
+    return _with_extras(pose, EXTRA_RUN, t * 2)
+
+
+def hit_pose(t):
+    """Matches CutoutRig.hit in the game."""
+    shock = 1 - smooth(0, 1, t)
+    wob = math.sin(t * 18) * shock
+    pose = {
+        "foot-l": P(dy=12 * shock, variant="push" if shock > 0.4 else None),
+        "foot-r": P(dy=6 * shock, variant="pass" if shock > 0.4 else None),
+        "arm-l": P(dy=12 * shock, deg=-30 * wob, variant="up" if shock > 0.3 else None),
+        "arm-r": P(dy=12 * shock, deg=30 * wob, variant="up" if shock > 0.3 else None),
+        "sprout": P(deg=25 * wob),
+        "body": P(dy=8 * shock, deg=8 * wob, sx=1 - 0.06 * shock, sy=1 + 0.08 * shock),
+    }
+    return _with_extras(pose, EXTRA_RUN, t)
