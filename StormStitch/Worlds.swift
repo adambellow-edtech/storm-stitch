@@ -54,6 +54,11 @@ struct World {
         min(all.count - 1, max(0, stage / stagesPerWorld))
     }
 
+    /// True for a world's last stage: the Shredder chase finale.
+    static func isShredderChase(stage index: Int) -> Bool {
+        index >= 0 && index < Stage.all.count && Stage.all[index].number == stagesPerWorld
+    }
+
     /// Global index of this world's first stage.
     var firstStage: Int { (World.all.firstIndex { $0.id == id } ?? 0) * World.stagesPerWorld }
 
@@ -136,7 +141,7 @@ extension Stage {
               length: 75, challenge: .noHits, stitchTarget: 110, gadget: nil, monster: nil),
         Stage(number: 9, name: "Carton Falls", beat: "Cartons tumble back into neat stacks.",
               length: 80, challenge: .spools(120), stitchTarget: 120, gadget: nil, monster: nil),
-        Stage(number: 10, name: "The Big Box", beat: "The Big Box creaks open, and Corrugo climbs out to join you!",
+        Stage(number: 10, name: "The Big Box", beat: "The Shredder huffs off! Corrugo climbs out of the Big Box to join you!",
               length: 90, challenge: .closeCalls(6), stitchTarget: 135, gadget: nil, monster: "corrugo")
     ]
 
@@ -159,7 +164,7 @@ extension Stage {
               length: 80, challenge: .noHits, stitchTarget: 115, gadget: nil, monster: nil),
         Stage(number: 9, name: "Stain Reef", beat: "The reef glows every color of ink.",
               length: 85, challenge: .spools(130), stitchTarget: 125, gadget: nil, monster: nil),
-        Stage(number: 10, name: "The Deep Inkwell", beat: "From the deep inkwell, Squidge paddles up in a paper boat!",
+        Stage(number: 10, name: "The Deep Inkwell", beat: "The Shredder slinks off, soggy! Squidge paddles up in a paper boat!",
               length: 95, challenge: .streak(45), stitchTarget: 140, gadget: nil, monster: "squidge")
     ]
 
