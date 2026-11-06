@@ -279,7 +279,9 @@ extension CutoutRig {
             "skirt": PartPose(sx: 1 + 0.05 * abs(sway), sy: 1 - 0.06 * abs(sway),
                               variant: sway > 0.45 ? "left" : (sway < -0.45 ? "right" : nil)),
             "drop-l": flick(t, side: -1),
-            "drop-r": flick(t + 0.5, side: 1)
+            "drop-r": flick(t + 0.5, side: 1),
+            // Wickling's tassel swings under him like a pendulum, a beat behind.
+            "tassel": PartPose(degrees: 10 * sin(2 * .pi * (t - 0.15)))
         ].merging(tripod(t)) { own, _ in own }
     }
 

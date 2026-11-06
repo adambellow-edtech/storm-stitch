@@ -1,0 +1,126 @@
+{
+  "name": "wickling",
+  "view": "back",
+  "parts": [
+    {
+      "name": "arm-l",
+      "image": "arm-hang",
+      "pivot": [
+        0.8434,
+        0.819
+      ],
+      "joint": [
+        -150.0,
+        265.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-fwd",
+          "pivot": [
+            0.8518,
+            0.8045
+          ]
+        },
+        "back": {
+          "image": "arm-back",
+          "pivot": [
+            0.8604,
+            0.8212
+          ]
+        },
+        "up": {
+          "image": "arm-up",
+          "pivot": [
+            0.8325,
+            0.585
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-r",
+      "image": "arm-hang-r",
+      "pivot": [
+        0.1566,
+        0.819
+      ],
+      "joint": [
+        150.0,
+        265.0
+      ],
+      "z": -2,
+      "torso": true,
+      "variants": {
+        "fwd": {
+          "image": "arm-fwd-r",
+          "pivot": [
+            0.1482,
+            0.8045
+          ]
+        },
+        "back": {
+          "image": "arm-back-r",
+          "pivot": [
+            0.1396,
+            0.8212
+          ]
+        },
+        "up": {
+          "image": "arm-up-r",
+          "pivot": [
+            0.1675,
+            0.585
+          ]
+        }
+      }
+    },
+    {
+      "name": "sprout",
+      "image": "lid",
+      "pivot": [
+        0.5,
+        0.12
+      ],
+      "joint": [
+        0.0,
+        440.0
+      ],
+      "z": 1,
+      "torso": true
+    },
+    {
+      "name": "tassel",
+      "image": "tassel",
+      "pivot": [
+        0.5987,
+        0.974
+      ],
+      "joint": [
+        0.0,
+        137.5
+      ],
+      "z": -1,
+      "torso": true
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        115.0
+      ],
+      "z": 0,
+      "torso": true
+    }
+  ],
+  "height": 567.94,
+  "inFront": [
+    "kick"
+  ]
+}
