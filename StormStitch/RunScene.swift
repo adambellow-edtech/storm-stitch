@@ -291,6 +291,8 @@ final class RunScene: SKScene {
     var landSquash = 0.0
     var jumpBuffer = 0.0
     var runPhase = 0.0
+    /// Spring follow-through that makes the runner's body lag, bend, wobble and settle.
+    var jelly = JellyBody()
 
     // MARK: Touch state
 
@@ -927,6 +929,7 @@ final class RunScene: SKScene {
         eyePop = 0
         shrugUsed = false
         landSquash = 0
+        jelly.reset()
         jumpBuffer = 0
         trackedTouch = nil
 
@@ -1165,6 +1168,8 @@ final class RunScene: SKScene {
             playerY += velocityY * dt
             if playerY <= 0 {
                 playerY = 0
+                // A slam lands harder than a normal fall.
+                jelly.land(hard: velocityY < -tuning.jumpVelocity * 1.4)
                 velocityY = 0
                 landed()
             }
@@ -1632,6 +1637,7 @@ final class RunScene: SKScene {
         hitPoseTimer = 0.45
         audio.play(.hit)
         haptics.hit()
+        jelly.hit()
         shake(strength: 14)
 
         // The hazard bursts into paper scraps.
@@ -1672,6 +1678,7 @@ final class RunScene: SKScene {
         laneProgress = 0
         audio.play(.whoosh, volume: 0.6)
         haptics.lane()
+        jelly.laneChange(direction: newLane - lastLaneFrom)
     }
 
     func jump() {
@@ -1684,6 +1691,7 @@ final class RunScene: SKScene {
         playerY = 0.0001
         audio.play(.jump, volume: 0.7)
         haptics.jump()
+        jelly.jump()
     }
 
     func swipeDown() {
@@ -1693,6 +1701,8 @@ final class RunScene: SKScene {
             slideTimer = tuning.slideDuration
             audio.play(.whoosh, volume: 0.5)
             dustPuff()
+            // Bramble's slide pose squashes on its own when it swaps in.
+            if monster.id != "bramble" { jelly.poseChanged() }
         }
     }
 
@@ -2025,8 +2035,10 @@ final class RunScene: SKScene {
             sy = 1 + CGFloat(abs(stride)) * 0.04
         }
 
-        rig.xScale = rigBaseScale * sx
-        rig.yScale = rigBaseScale * sy
+        jelly.step(lastRenderDt)
+        let give = jelly.scale
+        rig.xScale = rigBaseScale * sx * give.x
+        rig.yScale = rigBaseScale * sy * give.y
         rig.position = CGPoint(x: 0, y: bob * rigBaseScale)
         rig.zRotation = CGFloat((laneToX - playerX) * -0.35)
 
@@ -2071,6 +2083,8 @@ final class RunScene: SKScene {
         } else {
             brambleSprite.xScale = 1
         }
+        // Bend the body for follow-through; feet stay planted.
+        brambleSprite.warpGeometry = jelly.warp(mirrored: brambleSprite.xScale < 0)
 
         // Blinking and breathing while facing the camera.
         if !running && currentPose == "\(id)-front" {
@@ -2310,6 +2324,11 @@ final class RunScene: SKScene {
         brambleSprite.size = CGSize(width: height * entry.size.width / entry.size.height, height: height)
         brambleSprite.childNode(withName: "dizzyEyes")?.removeFromParent()
         if name == "bramble-lose" { addDizzyEyes(imageSize: entry.size) }
+        // A quick squash makes the swap read as a snappy pose change instead of a cut.
+        // Run, jump and hit poses skip it: their own moves already kick the body.
+        if !(name.hasSuffix("-back") || name.hasSuffix("-jump") || name.hasSuffix("-hit")) {
+            jelly.poseChanged()
+        }
     }
 
     /// Bramble's spiral eyes spin while he sits dazed after the storm wins.

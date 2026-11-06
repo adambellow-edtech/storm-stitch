@@ -41,6 +41,8 @@ final class StoryPlayer: SKNode {
     private var dots: [SKShapeNode] = []
     private let skipButton = SKNode()
     private var finished = false
+    /// Pages still turning or tearing away, cleared if the player taps ahead.
+    private var leaving: [SKNode] = []
     private let panelTime: TimeInterval = GameAudio.storyPanelSeconds
 
     init(size: CGSize, safeTop: CGFloat, safeBottom: CGFloat, onFinish: @escaping () -> Void) {
@@ -111,12 +113,14 @@ final class StoryPlayer: SKNode {
             dot.fillColor = i == index ? Palette.stitchGold : UIColor(white: 1, alpha: 0.4)
         }
         let panel = makePanel(StoryPlayer.panels[index])
-        panel.alpha = 0
         panel.zPosition = CGFloat(index + 1)
         addChild(panel)
-        panel.run(.fadeIn(withDuration: 0.45))
         if let old = current {
-            old.run(.sequence([.wait(forDuration: 0.45), .removeFromParent()]))
+            // The Shredder's panel rips the page in two; every other panel turns like a book page.
+            transition(from: old, to: panel, tear: StoryPlayer.panels[index].effect == .storm)
+        } else {
+            panel.alpha = 0
+            panel.run(.fadeIn(withDuration: 0.45))
         }
         current = panel
         run(.sequence([.wait(forDuration: panelTime), .run { [weak self] in self?.advance() }]), withKey: "auto")
@@ -160,11 +164,29 @@ final class StoryPlayer: SKNode {
                 picture.position = CGPoint(x: w / 2, y: h * 0.56)
             }
             node.addChild(picture)
-            let drift = CGFloat(index % 2 == 0 ? 1 : -1) * w * 0.03
-            picture.run(.group([
-                .scale(to: 1.1, duration: panelTime + 1),
-                .moveBy(x: drift, y: h * 0.012, duration: panelTime + 1)
-            ]))
+            // A slow camera move that eases in and out. Panels alternate pushing in and pulling back,
+            // so the story doesn't feel like one long zoom.
+            let pushIn = index % 2 == 0
+            let drift = CGFloat(pushIn ? 1 : -1) * w * 0.03
+            picture.setScale(pushIn ? 1 : 1.1)
+            let zoom = SKAction.scale(to: pushIn ? 1.1 : 1, duration: panelTime + 1)
+            let pan = SKAction.moveBy(x: drift, y: h * 0.012, duration: panelTime + 1)
+            zoom.timingMode = .easeInEaseOut
+            pan.timingMode = .easeInEaseOut
+            picture.run(.group([zoom, pan]))
+            if panel.effect == .storm && !Motion.reduced {
+                // The storm rumbles: the picture jolts every so often, like thunder shaking the page.
+                let jolt = SKAction.sequence([
+                    .moveBy(x: 7, y: -4, duration: 0.04),
+                    .moveBy(x: -12, y: 6, duration: 0.05),
+                    .moveBy(x: 8, y: -3, duration: 0.05),
+                    .moveBy(x: -3, y: 1, duration: 0.05)
+                ])
+                picture.run(.sequence([
+                    .wait(forDuration: 0.7),
+                    .repeatForever(.sequence([jolt, .wait(forDuration: 1.7, withRange: 0.8)]))
+                ]))
+            }
         }
 
         // Effects.
@@ -212,17 +234,228 @@ final class StoryPlayer: SKNode {
         paper.strokeColor = .white
         paper.lineWidth = 5
         strip.addChild(paper)
-        for (i, line) in lines.enumerated() {
-            let textArt = art.text(line, size: 18, fill: Palette.ink, outline: Palette.paper, style: .heading)
-            let sprite = SKSpriteNode(texture: textArt.texture, size: textArt.size)
-            sprite.position = CGPoint(x: 0, y: (CGFloat(lines.count - 1) / 2 - CGFloat(i)) * lineHeight)
-            sprite.alpha = 0
-            sprite.run(.sequence([.wait(forDuration: 0.35 + Double(i) * 0.35), .fadeIn(withDuration: 0.4)]))
-            strip.addChild(sprite)
+        if Motion.reduced {
+            // Gentle version: each line fades in.
+            for (i, line) in lines.enumerated() {
+                let textArt = art.text(line, size: 18, fill: Palette.ink, outline: Palette.paper, style: .heading)
+                let sprite = SKSpriteNode(texture: textArt.texture, size: textArt.size)
+                sprite.position = CGPoint(x: 0, y: (CGFloat(lines.count - 1) / 2 - CGFloat(i)) * lineHeight)
+                sprite.alpha = 0
+                sprite.run(.sequence([.wait(forDuration: 0.35 + Double(i) * 0.35), .fadeIn(withDuration: 0.4)]))
+                strip.addChild(sprite)
+            }
+            strip.alpha = 0
+            strip.run(.fadeIn(withDuration: 0.3))
+        } else {
+            addPoppingWords(lines, to: strip, lineHeight: lineHeight, startAt: 0.4)
+            // The strip drops in from above, slightly crooked, and settles like a pasted paper label.
+            let home = strip.position
+            strip.position.y += 26
+            strip.zRotation = -0.05
+            strip.alpha = 0
+            strip.run(.group([
+                .fadeIn(withDuration: 0.12),
+                .move(to: home, duration: 0.38).overshoot(),
+                .rotate(toAngle: 0, duration: 0.38).overshoot()
+            ]))
         }
-        strip.setScale(0.92)
-        strip.run(.scale(to: 1, duration: 0.3))
         return node
+    }
+
+    // MARK: Caption words
+
+    /// Lays out each line word by word, and pops each word in a beat after the one before,
+    /// so the caption reads like it's being told.
+    private func addPoppingWords(_ lines: [String], to strip: SKNode, lineHeight: CGFloat, startAt: TimeInterval) {
+        let fontSize: CGFloat = 18
+        let font = UIFont(name: "Fredoka-Bold", size: fontSize) ?? UIFont.systemFont(ofSize: fontSize, weight: .black)
+        let space = (" " as NSString).size(withAttributes: [.font: font]).width
+        // Text pictures carry padding around the letters for their outline; measure without it.
+        let pad = ceil(fontSize * 0.25)
+        var delay = startAt
+        for (i, line) in lines.enumerated() {
+            let words = line.split(separator: " ").map(String.init)
+            let arts = words.map { art.text($0, size: fontSize, fill: Palette.ink, outline: Palette.paper, style: .heading) }
+            let inked = arts.map { $0.size.width - pad * 2 }
+            let lineWidth = inked.reduce(0, +) + space * CGFloat(max(0, words.count - 1))
+            var x = -lineWidth / 2
+            let y = (CGFloat(lines.count - 1) / 2 - CGFloat(i)) * lineHeight
+            for (j, wordArt) in arts.enumerated() {
+                let sprite = SKSpriteNode(texture: wordArt.texture, size: wordArt.size)
+                sprite.position = CGPoint(x: x + inked[j] / 2, y: y)
+                sprite.alpha = 0
+                sprite.setScale(0.55)
+                sprite.run(.sequence([
+                    .wait(forDuration: delay),
+                    .group([.fadeIn(withDuration: 0.08), .scale(to: 1, duration: 0.22).overshoot()])
+                ]))
+                strip.addChild(sprite)
+                x += inked[j] + space
+                delay += 0.07
+            }
+        }
+    }
+
+    // MARK: Page transitions
+
+    private func transition(from old: SKNode, to new: SKNode, tear: Bool) {
+        // Tapping ahead mid-turn: finish the earlier page at once.
+        for page in leaving { page.removeFromParent() }
+        leaving = []
+        if Motion.reduced {
+            new.alpha = 0
+            new.run(.fadeIn(withDuration: 0.45))
+            old.run(.sequence([.wait(forDuration: 0.45), .removeFromParent()]))
+            leaving.append(old)
+            return
+        }
+        if tear, tearAway(old, above: new) { return }
+        turnPage(old, above: new)
+    }
+
+    /// The old page turns from its right edge toward the spine on the left, darkening as it lifts,
+    /// and casts a moving shadow on the new page underneath.
+    private func turnPage(_ old: SKNode, above new: SKNode) {
+        let w = screen.width, h = screen.height
+        let turn: TimeInterval = 0.55
+        old.zPosition = new.zPosition + 1
+        leaving.append(old)
+
+        let shade = SKSpriteNode(color: .black, size: screen)
+        shade.anchorPoint = .zero
+        shade.alpha = 0
+        shade.zPosition = 40
+        old.addChild(shade)
+        shade.run(.fadeAlpha(to: 0.4, duration: turn))
+
+        let fold = SKAction.scaleX(to: 0.001, duration: turn)
+        fold.timingMode = .easeIn
+        let lift = SKAction.group([.scaleY(to: 1.04, duration: turn), .moveBy(x: 0, y: -h * 0.02, duration: turn)])
+        old.run(.sequence([.group([fold, lift]), .removeFromParent()]))
+
+        let shadow = SKSpriteNode(texture: StoryPlayer.edgeShadow, size: CGSize(width: w * 0.18, height: h))
+        shadow.anchorPoint = CGPoint(x: 0, y: 0)
+        shadow.zPosition = new.zPosition + 0.5
+        shadow.alpha = 0
+        addChild(shadow)
+        leaving.append(shadow)
+        shadow.run(.sequence([
+            .customAction(withDuration: turn) { [weak old] node, _ in
+                guard let old else { return }
+                let progress = 1 - old.xScale
+                node.position.x = w * old.xScale
+                node.alpha = 0.55 * sin(.pi * progress)
+            },
+            .removeFromParent()
+        ]))
+    }
+
+    /// A shadow that is darkest at its left edge and fades to clear on the right.
+    private static let edgeShadow: SKTexture = {
+        let size = CGSize(width: 64, height: 4)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(white: 0, alpha: 1).cgColor, UIColor(white: 0, alpha: 0).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: 0), options: [])
+            }
+        }
+        return SKTexture(image: image)
+    }()
+
+    /// The Shredder's entrance: the old page rips down the middle along a jagged tear,
+    /// and the two halves fall away with a puff of paper scraps. False if the page can't be captured.
+    private func tearAway(_ old: SKNode, above new: SKNode) -> Bool {
+        let w = screen.width, h = screen.height
+        guard let view = scene?.view,
+              let texture = view.texture(from: old, crop: CGRect(origin: .zero, size: screen)) else { return false }
+
+        // The tear, top to bottom, wandering around the middle.
+        var tear: [CGPoint] = []
+        let steps = 14
+        for i in 0...steps {
+            let y = h - h * CGFloat(i) / CGFloat(steps)
+            let wobble = i == 0 || i == steps ? 0 : CGFloat.random(in: -26...26)
+            tear.append(CGPoint(x: w / 2 + wobble, y: y))
+        }
+
+        func half(left: Bool) -> SKNode {
+            let outline = CGMutablePath()
+            let corner = left ? CGFloat(0) : w
+            outline.move(to: CGPoint(x: corner, y: h))
+            for point in tear { outline.addLine(to: point) }
+            outline.addLine(to: CGPoint(x: corner, y: 0))
+            outline.closeSubpath()
+            let mask = SKShapeNode(path: outline)
+            mask.fillColor = .white
+            mask.strokeColor = .clear
+            let crop = SKCropNode()
+            crop.maskNode = mask
+            let picture = SKSpriteNode(texture: texture, size: screen)
+            picture.anchorPoint = .zero
+            crop.addChild(picture)
+
+            // A pale torn edge along the rip, like paper fibers.
+            let edgePath = CGMutablePath()
+            edgePath.addLines(between: tear)
+            let edge = SKShapeNode(path: edgePath)
+            edge.strokeColor = Palette.paper
+            edge.lineWidth = 5
+            edge.lineJoin = .round
+            edge.zPosition = 1
+
+            // Each half pivots on its outer bottom corner as it falls away.
+            let holder = SKNode()
+            holder.position = CGPoint(x: corner, y: 0)
+            crop.position = CGPoint(x: -corner, y: 0)
+            edge.position = crop.position
+            holder.addChild(crop)
+            holder.addChild(edge)
+            holder.zPosition = new.zPosition + 1
+            return holder
+        }
+
+        let duration: TimeInterval = 0.7
+        for left in [true, false] {
+            let piece = half(left: left)
+            addChild(piece)
+            leaving.append(piece)
+            let side: CGFloat = left ? -1 : 1
+            // Each half starts slow and accelerates away, like paper dropping.
+            let drop = SKAction.moveBy(x: side * w * 0.35, y: -h * 0.25, duration: duration)
+            let tip = SKAction.rotate(byAngle: -side * 0.45, duration: duration)
+            drop.timingMode = .easeIn
+            tip.timingMode = .easeIn
+            let fall = SKAction.group([
+                drop,
+                tip,
+                .sequence([.wait(forDuration: duration * 0.5), .fadeOut(withDuration: duration * 0.5)])
+            ])
+            piece.run(.sequence([.wait(forDuration: 0.08), fall, .removeFromParent()]))
+        }
+        old.removeFromParent()
+
+        // Scraps burst out of the rip.
+        let scraps = SKEmitterNode()
+        scraps.particleTexture = art.scrap.texture
+        scraps.numParticlesToEmit = 46
+        scraps.particleBirthRate = 600
+        scraps.particleLifetime = 1.1
+        scraps.particleColor = UIColor(hex: 0xD2D4DB)
+        scraps.particleColorBlendFactor = 1
+        scraps.particleColorRedRange = 0.15
+        scraps.particleSpeed = 260
+        scraps.particleSpeedRange = 140
+        scraps.emissionAngleRange = .pi * 2
+        scraps.yAcceleration = -500
+        scraps.particleRotationRange = .pi * 2
+        scraps.particleRotationSpeed = 6
+        scraps.particleAlphaSpeed = -0.8
+        scraps.position = CGPoint(x: w / 2, y: h / 2)
+        scraps.particlePositionRange = CGVector(dx: 30, dy: h * 0.8)
+        scraps.zPosition = new.zPosition + 2
+        addChild(scraps)
+        scraps.run(.sequence([.wait(forDuration: 2), .removeFromParent()]))
+        return true
     }
 
     private func addEmitter(to node: SKNode, texture: SKTexture, colors: [UIColor], rate: CGFloat,
