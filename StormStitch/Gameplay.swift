@@ -25,6 +25,8 @@ struct RunSnapshot {
     var gateSpawned: Bool
     var rng: GameRNG
     var powers: PowerState
+    /// Patch Armor's spares live in `powers`, so the worn patch must rewind with them.
+    var shieldActive: Bool
 }
 
 extension RunScene {
@@ -585,7 +587,7 @@ extension RunScene {
                     meter: meter, stormDistance: stormDistance, playerX: playerX, laneIndex: laneIndex,
                     laneFromX: laneFromX, laneToX: laneToX, laneProgress: laneProgress, playerY: playerY,
                     velocityY: velocityY, nextRowIn: nextRowIn, fullyStitched: fullyStitched,
-                    gateSpawned: gateSpawned, rng: rng, powers: powers)
+                    gateSpawned: gateSpawned, rng: rng, powers: powers, shieldActive: shieldActive)
     }
 
     /// Puts the run back the way it was about 3 seconds ago. Returns false if there isn't enough history yet.
@@ -656,6 +658,8 @@ extension RunScene {
         gateSpawned = snap.gateSpawned
         rng = snap.rng
         powers = snap.powers
+        shieldActive = snap.shieldActive
+        shieldRing.isHidden = !shieldActive
         snapshots.removeAll { $0.elapsed > snap.elapsed }
         slideTimer = 0
         hitPoseTimer = 0
