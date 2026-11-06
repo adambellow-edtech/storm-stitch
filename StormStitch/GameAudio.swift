@@ -270,10 +270,20 @@ final class GameAudio {
         }
     }
 
-    /// Switches the song to its holiday version (or back).
-    func setMusicTheme(_ holiday: Holiday?) {
+    /// Switches the song for a world or a holiday. Each world plays "music-<world>-base/drive.caf"
+    /// once those files are in the app, and Notebook Meadow's song until then.
+    func setMusicTheme(_ theme: Theme?) {
+        let holiday = theme?.holiday
         synth.theme = holiday == .snow ? 2 : holiday == .harvest ? 1 : 0
-        songName = holiday == .snow ? "winter" : holiday == .harvest ? "harvest" : "main"
+        if let holiday {
+            songName = holiday == .snow ? "winter" : "harvest"
+        } else if let key = theme?.key,
+                  Bundle.main.url(forResource: "music-\(key)-base", withExtension: "caf") != nil,
+                  Bundle.main.url(forResource: "music-\(key)-drive", withExtension: "caf") != nil {
+            songName = key
+        } else {
+            songName = "main"
+        }
     }
 
     func setIntensity(_ value: Float) {
