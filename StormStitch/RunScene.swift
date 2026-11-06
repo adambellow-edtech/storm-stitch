@@ -143,6 +143,8 @@ final class RunScene: SKScene {
     var frontCutout: CutoutRig?
     var frontCutoutID = ""
     var frontCutoutCache: [String: CutoutRig?] = [:]
+    /// The monster just picked in a menu: its next portrait cheers and waves hello once.
+    var portraitGreetID: String?
     let brambleBack = SKTexture(imageNamed: "bramble-back")
     let brambleFront = SKTexture(imageNamed: "bramble-front")
     /// Illustrated poses, loaded on first use: name to texture and pixel size.
@@ -970,6 +972,7 @@ final class RunScene: SKScene {
         result.elapsed = elapsed
         result.finished = finished
         result.rewinds = rewindsThisRun
+        result.powers = powers.taken.map { (kind: $0, level: powerLevel($0)) }
         return result
     }
 
@@ -2169,8 +2172,9 @@ final class RunScene: SKScene {
             }
         }
 
-        // Blinking and breathing while facing the camera.
-        if !running && currentPose == "\(id)-front" {
+        // Blinking and breathing while facing the camera. The front rig blinks and breathes on its own,
+        // so this is only for the single painted front view.
+        if !running && !useFront && currentPose == "\(id)-front" {
             frontBlinkTimer -= lastRenderDt
             if frontBlinkTimer < -0.12 { frontBlinkTimer = Double.random(in: 2...5) }
             let blinkName = "\(id)-blink"

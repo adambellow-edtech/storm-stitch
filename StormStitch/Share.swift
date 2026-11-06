@@ -41,11 +41,21 @@ enum Share {
             "\(starLine)  🧵 \(stats.spools)  📏 \(Int(stats.distance)) m",
             "Score: \(stats.score.formatted())"
         ]
+        if let powers = powerLine(stats.powers) {
+            lines.append("⚡ \(powers)")
+        }
         if let beat {
             lines.append(stats.score > beat.target ? "I beat \(beat.name)'s \(beat.target.formatted())! 🏆" : "\(beat.name) still leads with \(beat.target.formatted()).")
         }
         lines.append("Can you outrun the storm?")
         return lines.joined(separator: "\n")
+    }
+
+    /// The powers taken in a run as one short line, like "Thread Magnet · Spring Step · Patch Armor Lv2".
+    /// Nil when no powers were taken.
+    static func powerLine(_ powers: [(kind: PowerKind, level: Int)]) -> String? {
+        guard !powers.isEmpty else { return nil }
+        return powers.map { $0.level > 1 ? "\($0.kind.name) Lv\($0.level)" : $0.kind.name }.joined(separator: " · ")
     }
 
     /// A shareable picture of the result.

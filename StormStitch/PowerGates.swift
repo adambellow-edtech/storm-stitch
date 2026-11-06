@@ -474,14 +474,83 @@ extension RunScene {
 
     // MARK: Drawing
 
+    /// The painted icon for a power (power-<rawValue>.png), fitted inside a square box.
+    /// Nil until the painting is added, so callers keep their drawn felt badge.
+    func powerIconSprite(_ kind: PowerKind, fit: CGFloat) -> SKSpriteNode? {
+        // Loaded at a fixed width: illustrated() caches by name, so every caller sizes it here.
+        guard let picture = illustrated("power-\(kind.rawValue)", width: 100),
+              picture.size.width > 0, picture.size.height > 0 else { return nil }
+        let k = fit / max(picture.size.width, picture.size.height)
+        return SKSpriteNode(texture: picture.texture,
+                            size: CGSize(width: picture.size.width * k, height: picture.size.height * k))
+    }
+
     /// A paper door with a felt frame, a gold running stitch and the power's name.
-    /// Drawn in art units (100 per lane), standing on its bottom edge.
+    /// Drawn in art units (100 per lane), standing on its bottom edge. When the painted door panel
+    /// (power-door.png) and icons (power-<rawValue>.png) are in the bundle they replace the drawn ones.
     func makePowerDoorSprite(_ kind: PowerKind, level: Int, withSeam: Bool) -> SKSpriteNode {
         let w: CGFloat = 84
         let h: CGFloat = 138
         let sprite = SKSpriteNode(color: .clear, size: CGSize(width: w + 8, height: h + 8))
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0.02)
 
+        // Where the badge, name lines and level go (y up from the door's bottom edge).
+        var badgeCenter = CGPoint(x: 0, y: h * 0.7)
+        var badgeSize: CGFloat = 38
+        var lineYs: [CGFloat] = kind.doorLines.count == 1 ? [h * 0.42] : [h * 0.5, h * 0.36]
+        var levelY = h * 0.17
+        var badgeRadius: CGFloat = 13
+        if let panelArt = illustrated("power-door", width: 100), panelArt.size.width > 0, panelArt.size.height > 0 {
+            // The painted torn notebook page, fitted to the door's footprint and standing on its bottom edge.
+            let k = min(w / panelArt.size.width, h / panelArt.size.height)
+            let pw = panelArt.size.width * k
+            let ph = panelArt.size.height * k
+            let panel = SKSpriteNode(texture: panelArt.texture, size: CGSize(width: pw, height: ph))
+            panel.anchorPoint = CGPoint(x: 0.5, y: 0)
+            panel.zPosition = 1
+            sprite.addChild(panel)
+            // The page has a round window for the badge: centered 0.495 across and 0.362 down from the
+            // top, 0.557 of the width wide. A badge 0.6 wide covers its edge. The name sits in the
+            // plain lower third.
+            badgeCenter = CGPoint(x: (0.495 - 0.5) * pw, y: (1 - 0.362) * ph)
+            badgeSize = 0.6 * pw
+            lineYs = kind.doorLines.count == 1 ? [ph * 0.25] : [ph * 0.31, ph * 0.19]
+            levelY = ph * 0.075
+            // A drawn badge stands in for a missing icon painting, big enough to fill the window.
+            badgeRadius = badgeSize / 2
+        } else {
+            addDrawnDoorPanel(kind, width: w, height: h, to: sprite)
+        }
+
+        if let icon = powerIconSprite(kind, fit: badgeSize) {
+            icon.position = badgeCenter
+            icon.zPosition = 4
+            sprite.addChild(icon)
+        } else {
+            // A felt badge with the HUD tag, so the door matches its icon.
+            let badge = SKShapeNode(circleOfRadius: badgeRadius)
+            badge.fillColor = kind.color
+            badge.strokeColor = Palette.ink
+            badge.lineWidth = 2
+            badge.position = badgeCenter
+            badge.zPosition = 4
+            sprite.addChild(badge)
+            addFittedText(kind.tag, size: 11 * badgeRadius / 13, fill: .white, maxWidth: badgeRadius * 1.7, at: badgeCenter, z: 5, to: sprite)
+        }
+
+        for (line, y) in zip(kind.doorLines, lineYs) {
+            addFittedText(line, size: 15, fill: kind.color, maxWidth: w * 0.68, at: CGPoint(x: 0, y: y), z: 5, to: sprite)
+        }
+        if level > 1 {
+            addFittedText("Lv \(level)", size: 13, fill: Palette.stitchGold, maxWidth: w * 0.6, at: CGPoint(x: 0, y: levelY), z: 5, to: sprite)
+        }
+
+        if withSeam { addSeam(to: sprite) }
+        return sprite
+    }
+
+    /// The code-drawn door: shadow, felt frame, gold running stitch and a paper panel.
+    func addDrawnDoorPanel(_ kind: PowerKind, width w: CGFloat, height h: CGFloat, to sprite: SKSpriteNode) {
         let door = CGMutablePath()
         door.move(to: CGPoint(x: -w / 2, y: 0))
         door.addLine(to: CGPoint(x: -w / 2, y: h - w / 2))
@@ -523,28 +592,6 @@ extension RunScene {
             panel.zPosition = 3
             sprite.addChild(panel)
         }
-
-        // A felt badge with the HUD tag, so the door matches its icon.
-        let badge = SKShapeNode(circleOfRadius: 13)
-        badge.fillColor = kind.color
-        badge.strokeColor = Palette.ink
-        badge.lineWidth = 2
-        badge.position = CGPoint(x: 0, y: h * 0.7)
-        badge.zPosition = 4
-        sprite.addChild(badge)
-        addFittedText(kind.tag, size: 11, fill: .white, maxWidth: 22, at: CGPoint(x: 0, y: h * 0.7), z: 5, to: sprite)
-
-        let lines = kind.doorLines
-        for (i, line) in lines.enumerated() {
-            let y = h * (lines.count == 1 ? 0.42 : 0.5 - 0.14 * CGFloat(i))
-            addFittedText(line, size: 15, fill: kind.color, maxWidth: w * 0.68, at: CGPoint(x: 0, y: y), z: 5, to: sprite)
-        }
-        if level > 1 {
-            addFittedText("Lv \(level)", size: 13, fill: Palette.stitchGold, maxWidth: w * 0.6, at: CGPoint(x: 0, y: h * 0.17), z: 5, to: sprite)
-        }
-
-        if withSeam { addSeam(to: sprite) }
-        return sprite
     }
 
     /// The torn seam the doors stand in: a ragged paper strip across all three lanes, tacked with gold.
@@ -610,18 +657,23 @@ extension RunScene {
         for (i, kind) in powers.taken.enumerated() {
             let icon = SKNode()
             icon.position = CGPoint(x: CGFloat(i) * 36, y: 0)
-            let disc = SKShapeNode(circleOfRadius: 15)
-            disc.fillColor = kind.color
-            disc.strokeColor = Palette.ink
-            disc.lineWidth = 3
-            icon.addChild(disc)
-            let ring = SKShapeNode(path: CGPath(ellipseIn: CGRect(x: -11, y: -11, width: 22, height: 22), transform: nil)
-                .copy(dashingWithPhase: 0, lengths: [4, 3]))
-            ring.strokeColor = Palette.stitchGold
-            ring.lineWidth = 1.5
-            ring.zPosition = 1
-            icon.addChild(ring)
-            addFittedText(kind.tag, size: 11, fill: .white, maxWidth: 22, at: .zero, z: 2, to: icon)
+            if let painted = powerIconSprite(kind, fit: 33) {
+                painted.zPosition = 1
+                icon.addChild(painted)
+            } else {
+                let disc = SKShapeNode(circleOfRadius: 15)
+                disc.fillColor = kind.color
+                disc.strokeColor = Palette.ink
+                disc.lineWidth = 3
+                icon.addChild(disc)
+                let ring = SKShapeNode(path: CGPath(ellipseIn: CGRect(x: -11, y: -11, width: 22, height: 22), transform: nil)
+                    .copy(dashingWithPhase: 0, lengths: [4, 3]))
+                ring.strokeColor = Palette.stitchGold
+                ring.lineWidth = 1.5
+                ring.zPosition = 1
+                icon.addChild(ring)
+                addFittedText(kind.tag, size: 11, fill: .white, maxWidth: 22, at: .zero, z: 2, to: icon)
+            }
             let level = powerLevel(kind)
             if level > 1 {
                 let pip = SKShapeNode(circleOfRadius: 8)

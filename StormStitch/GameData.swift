@@ -307,6 +307,8 @@ struct RunStats {
     var elapsed = 0.0
     var finished = false
     var rewinds = 0
+    /// Powers taken at the gates, in the order first taken, with the level each reached.
+    var powers: [(kind: PowerKind, level: Int)] = []
 
     /// Daily, challenge and endless score.
     var score: Int { spools * 10 + Int(distance) }

@@ -1,4 +1,5 @@
 import SpriteKit
+import StoreKit
 import UIKit
 
 /// Every screen that isn't the run itself. Screens are built on `overlay`; buttons register
@@ -164,7 +165,9 @@ extension RunScene {
         return node
     }
 
-    /// A front-facing monster fitted inside a box, breathing and blinking.
+    /// A front-facing monster fitted inside a box, breathing and blinking. Monsters with a front rig
+    /// (`<id>-front-rig.json`) stand there as the jointed rig instead, idling and waving; the one
+    /// just picked (`portraitGreetID`) cheers first. Locked monsters stay a painted silhouette.
     func monsterPortrait(_ monster: Monster, box: CGSize, locked: Bool = false) -> SKSpriteNode? {
         guard let sprite = imageSprite("\(monster.id)-front") else { return nil }
         let k = min(box.width / sprite.size.width, box.height / sprite.size.height)
@@ -173,10 +176,53 @@ extension RunScene {
             sprite.color = Palette.ink
             sprite.colorBlendFactor = 1
             sprite.alpha = 0.45
+        } else if let rig = CutoutRig(named: "\(monster.id)-front"), rig.height > 0 {
+            // The sprite keeps the painting's size for layout and taps but draws nothing itself.
+            sprite.texture = nil
+            sprite.color = .clear
+            sprite.colorBlendFactor = 0
+            rig.setScale(sprite.size.height / rig.height)
+            rig.position = CGPoint(x: 0, y: -sprite.size.height / 2)
+            rig.zPosition = 2
+            sprite.addChild(rig)
+            let greet = portraitGreetID == monster.id
+            if greet { portraitGreetID = nil }
+            animateFrontRig(rig, greet: greet)
         } else {
             bringToLife(sprite, id: monster.id)
         }
         return sprite
+    }
+
+    /// Plays the front rig's idle (breathing, a wave, blinks) forever. A greeting starts with a quick
+    /// cheer and goes straight into the wave. The rig stands on the bottom edge of its host sprite,
+    /// wherever the caller moves the host's anchor.
+    func animateFrontRig(_ rig: CutoutRig, greet: Bool) {
+        let loop: CGFloat = 4
+        // A greeting lands just before the wave; others start anywhere so a shelf of them doesn't wave in step.
+        let offset: CGFloat = greet ? 0.27 : CGFloat.random(in: 0..<1)
+        let stand: (SKNode) -> Void = { node in
+            guard let host = node.parent as? SKSpriteNode else { return }
+            node.position = CGPoint(x: host.size.width * (0.5 - host.anchorPoint.x),
+                                    y: -host.size.height * host.anchorPoint.y)
+        }
+        let idle = SKAction.customAction(withDuration: TimeInterval(loop)) { node, elapsed in
+            guard let rig = node as? CutoutRig else { return }
+            stand(rig)
+            rig.apply(CutoutRig.frontIdle((elapsed / loop + offset).truncatingRemainder(dividingBy: 1)))
+        }
+        rig.apply(CutoutRig.frontIdle(offset))
+        var steps: [SKAction] = []
+        if greet && !Motion.reduced {
+            let cheerTime: CGFloat = 1.1
+            steps.append(.customAction(withDuration: TimeInterval(cheerTime)) { node, elapsed in
+                guard let rig = node as? CutoutRig else { return }
+                stand(rig)
+                rig.apply(CutoutRig.frontCheer(min(1, elapsed / cheerTime)))
+            })
+        }
+        steps.append(.repeatForever(idle))
+        rig.run(.sequence(steps), withKey: "frontRig")
     }
 
     func closeButton(at point: CGPoint, action: @escaping () -> Void) {
@@ -616,6 +662,7 @@ extension RunScene {
                 Monster.selectedIndex = Monster.roster.firstIndex { $0.id == next.id } ?? 0
                 self.monster = next
                 self.currentPose = ""
+                self.portraitGreetID = next.id
                 self.showMap()
                 self.showStageCard(index)
             }
@@ -1025,6 +1072,7 @@ extension RunScene {
                         Monster.selectedIndex = i
                         self.monster = monster
                         self.currentPose = ""
+                        self.portraitGreetID = monster.id
                         self.audio.chime(step: i % 8)
                         self.showTrophyCase(tab: 0)
                     } else {
@@ -1319,9 +1367,11 @@ extension RunScene {
         }
         cells.append(("Streak", stats.bestStreak, plain))
         cells.append(("Close calls", stats.closeCalls, plain))
+        // With powers to show, the stats lift a little to make room for one row of them under the stats.
+        let statsLift: CGFloat = stats.powers.isEmpty ? 0 : 6
         for (index, cell) in cells.enumerated() {
             let column = CGFloat(index % 3 - 1)
-            let rowY = innerTop - (index < 3 ? 150 : 192) * k
+            let rowY = innerTop - ((index < 3 ? 150 : 192) - statsLift) * k
             let value = SKLabelNode(fontNamed: "Fredoka-SemiBold")
             value.text = cell.format(cell.value)
             if !Motion.reduced && cell.value > 0 {
@@ -1346,6 +1396,15 @@ extension RunScene {
             name.position = CGPoint(x: value.position.x, y: rowY - 15 * k)
             name.zPosition = 1
             card.addChild(name)
+        }
+
+        // Powers taken at the gates: one compact row of icons and names, inside the bottom stitches.
+        if let powerRow = resultsPowerRow(stats.powers, unit: k, maxWidth: cardW - 90) {
+            powerRow.position = CGPoint(x: 0, y: innerTop - 223 * k)
+            powerRow.zPosition = 1
+            powerRow.alpha = 0
+            powerRow.run(.sequence([.wait(forDuration: Motion.reduced ? 0.3 : 1.0), .fadeIn(withDuration: 0.25)]))
+            card.addChild(powerRow)
         }
 
         // The card rises into place and pops slightly past full size before settling.
@@ -1474,6 +1533,69 @@ extension RunScene {
             overlay.addChild(button)
             onTap(button, item.1)
         }
+
+        // Clearing Notebook Meadow's last stage for the first time asks for a review, once the
+        // stars, counts and unlock banners have all landed.
+        if case .stage(let index) = mode, finished, stars > 0, index == World.stagesPerWorld - 1,
+           Progress.shared.data.reviewRequested != true {
+            scheduleReviewPrompt()
+        }
+    }
+
+    /// The powers taken in a run as one row for the results card: an icon and a name for each
+    /// ("Lv2" after one taken more than once). Centered on its origin and fitted to `maxWidth`.
+    /// Nil when no powers were taken.
+    func resultsPowerRow(_ picks: [(kind: PowerKind, level: Int)], unit k: CGFloat, maxWidth: CGFloat) -> SKNode? {
+        guard !picks.isEmpty else { return nil }
+        let row = SKNode()
+        let iconSize = 15 * k
+        let gap = 12 * k
+        var x: CGFloat = 0
+        for pick in picks {
+            let icon: SKNode
+            if let painted = powerIconSprite(pick.kind, fit: iconSize) {
+                icon = painted
+            } else {
+                // The same felt color as its door and HUD badge.
+                let disc = SKShapeNode(circleOfRadius: iconSize * 0.42)
+                disc.fillColor = pick.kind.color
+                disc.strokeColor = Palette.ink
+                disc.lineWidth = max(1, 1.5 * k)
+                icon = disc
+            }
+            icon.position = CGPoint(x: x + iconSize / 2, y: 0)
+            row.addChild(icon)
+            x += iconSize + 4 * k
+            let text = pick.level > 1 ? "\(pick.kind.name) Lv\(pick.level)" : pick.kind.name
+            let name = label(text, size: 11 * k, color: Palette.ink, style: .body, anchorX: 0)
+            name.position = CGPoint(x: x, y: 0)
+            row.addChild(name)
+            x += name.size.width + gap
+        }
+        let width = x - gap
+        for child in row.children {
+            child.position.x -= width / 2
+        }
+        if width > maxWidth { row.setScale(maxWidth / width) }
+        return row
+    }
+
+    /// Asks StoreKit for the review prompt a few seconds after the results card settles. Skipped if a
+    /// run has started by then (the flag stays unset, so the next clear of the stage tries again).
+    func scheduleReviewPrompt() {
+        removeAction(forKey: "reviewPrompt")
+        run(.sequence([
+            .wait(forDuration: 3.2),
+            .run { [weak self] in
+                guard let self, self.state == .over || self.state == .menu || self.state == .title,
+                      Progress.shared.data.reviewRequested != true,
+                      let windowScene = self.view?.window?.windowScene else { return }
+                Progress.shared.update { $0.reviewRequested = true }
+                Task { @MainActor in
+                    AppStore.requestReview(in: windowScene)
+                }
+            }
+        ]), withKey: "reviewPrompt")
     }
 
     // MARK: Sharing

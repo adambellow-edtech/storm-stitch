@@ -20,6 +20,8 @@ struct SaveData: Codable {
     var storySeen = false
     /// Set once the player has seen their first pick-3 power gate. Optional so older saves still decode.
     var powerGateSeen: Bool? = nil
+    /// Set once the App Store review prompt has been asked for. Optional so older saves still decode.
+    var reviewRequested: Bool? = nil
     var music = true
     var sound = true
     var haptics = true
