@@ -7,6 +7,10 @@ from rig import P, smooth
 # Per monster: arm joints (x from center, y from the ground, rig units) and arm scale.
 SETUPS = {
     "bramble": {"arm": [-235, 455], "scale": 0.55},
+    "fizz": {"arm": [-215, 330], "scale": 0.5},
+    # Wings go in front: his tail fan fills the space behind him.
+    "gobbler": {"arm": [-190, 330], "scale": 0.5, "z": 1},
+    "comet": {"arm": [-180, 330], "scale": 0.5},
 }
 
 
@@ -17,7 +21,7 @@ def manifest_for(name):
     def manifest(piv):
         def arm(side, suffix):
             return {"name": f"arm-{side}", "image": f"arm-rest{suffix}", "scale": cfg["scale"],
-                    "pivot": piv[f"arm-rest{suffix}"], "joint": [x if side == "l" else -x, y], "z": -1,
+                    "pivot": piv[f"arm-rest{suffix}"], "joint": [x if side == "l" else -x, y], "z": cfg.get("z", -1),
                     "variants": {v: {"image": f"arm-{v}{suffix}", "pivot": piv[f"arm-{v}{suffix}"]}
                                  for v in ("wave", "cheer", "slump")}}
         return {"name": f"{name}-front", "view": "front", "parts": [

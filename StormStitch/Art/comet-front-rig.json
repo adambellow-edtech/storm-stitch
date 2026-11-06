@@ -1,0 +1,107 @@
+{
+  "name": "comet-front",
+  "view": "front",
+  "parts": [
+    {
+      "name": "arm-l",
+      "image": "arm-rest",
+      "pivot": [
+        0.8152,
+        0.8547
+      ],
+      "joint": [
+        -90.0,
+        165.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "wave": {
+          "image": "arm-wave",
+          "pivot": [
+            0.6051,
+            0.1658
+          ]
+        },
+        "cheer": {
+          "image": "arm-cheer",
+          "pivot": [
+            0.727,
+            0.1567
+          ]
+        },
+        "slump": {
+          "image": "arm-slump",
+          "pivot": [
+            0.8235,
+            0.855
+          ]
+        }
+      }
+    },
+    {
+      "name": "arm-r",
+      "image": "arm-rest-r",
+      "pivot": [
+        0.1848,
+        0.8547
+      ],
+      "joint": [
+        90.0,
+        165.0
+      ],
+      "z": -1,
+      "torso": true,
+      "variants": {
+        "wave": {
+          "image": "arm-wave-r",
+          "pivot": [
+            0.3949,
+            0.1658
+          ]
+        },
+        "cheer": {
+          "image": "arm-cheer-r",
+          "pivot": [
+            0.273,
+            0.1567
+          ]
+        },
+        "slump": {
+          "image": "arm-slump-r",
+          "pivot": [
+            0.1765,
+            0.855
+          ]
+        }
+      }
+    },
+    {
+      "name": "body",
+      "image": "body",
+      "pivot": [
+        0.5,
+        0.0
+      ],
+      "joint": [
+        0.0,
+        0.0
+      ],
+      "z": 0,
+      "torso": true,
+      "variants": {
+        "blink": {
+          "image": "body-blink",
+          "pivot": [
+            0.5,
+            0.0
+          ]
+        }
+      }
+    }
+  ],
+  "height": 422.5,
+  "inFront": [
+    "kick"
+  ]
+}
