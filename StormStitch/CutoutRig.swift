@@ -146,14 +146,14 @@ final class CutoutRig: SKNode {
 
 // MARK: Motions for a runner seen from behind
 // Part names: body, sprout, arm-l, arm-r, foot-l, foot-r ("l" is the side on the left of the screen).
-// Feet have a "kick" variant showing the sole. Distances are rig units for a character about 450 units tall.
+// Feet are short booties tucked under the body, with a "kick" variant showing the sole. Distances are rig units for a character about 450 units tall.
 
 extension CutoutRig {
     /// Share of the cycle each foot spends on the ground; the rest is the swing, so there's a short
     /// moment with both feet in the air between steps.
     static let stance: CGFloat = 0.4
     /// Share of the swing that shows the sole. After that the foot reaches forward heel-first to land.
-    static let kickUntil: CGFloat = 0.55
+    static let kickUntil: CGFloat = 0.6
 
     /// 0 below a, 1 above b, an S-curve between.
     static func smooth(_ a: CGFloat, _ b: CGFloat, _ x: CGFloat) -> CGFloat {
@@ -172,17 +172,17 @@ extension CutoutRig {
             let land = 1 - smooth(0, 0.08, phase)
             // Late in the stance the heel peels up as the foot pushes off.
             let peel = smooth(stance * 0.55, stance, phase)
-            return PartPose(dy: 7 * peel, sx: 1 + 0.08 * land, sy: 1 - 0.12 * land - 0.08 * peel)
+            return PartPose(dy: 3 * peel, sx: 1 + 0.1 * land, sy: 1 - 0.15 * land - 0.06 * peel)
         }
         let u = (phase - stance) / (1 - stance)  // 0 just after push-off, 1 at landing
         // The foot rises fast behind the runner and comes down to land: a smooth arc that peaks early.
         let height = sin(.pi * pow(u, 0.8))
-        let rise = 7 + 60 * height - 7 * u
+        let rise = 3 + 23 * height - 3 * u
         if u < kickUntil {
             let k = u / kickUntil
             let size = (1.08 - 0.1 * k) * (0.85 + 0.15 * smooth(0, 0.2, k))
             // Kicked back toward the camera: big and tipped up, curling as it rises.
-            return PartPose(dy: rise, degrees: side * (22 - 18 * k), sx: size, sy: size, variant: "kick")
+            return PartPose(dy: rise, degrees: side * (16 - 12 * k), sx: size, sy: size, variant: "kick")
         }
         let k = (u - kickUntil) / (1 - kickUntil)
         let size = 0.94 * (0.88 + 0.12 * smooth(0, 0.25, k)) + 0.06 * k

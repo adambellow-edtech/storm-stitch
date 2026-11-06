@@ -17,14 +17,14 @@ MANIFEST = {
     # scale: picture to rig size. pivot: fraction of the picture (x from left, y from bottom).
     # joint: where the pivot sits, from the ground center, y up. z: draw order (higher on top).
     "parts": [
-        {"name": "foot-l", "scale": 0.5, "pivot": [0.5, 0.95], "joint": [-78, 272], "z": -3,
-         "variants": {"kick": {"image": "foot-kick", "pivot": [0.3, 0.95], "mirror": True}}},
-        {"name": "foot-r", "scale": 0.5, "pivot": [0.5, 0.95], "joint": [78, 272], "z": -3,
-         "variants": {"kick": {"image": "foot-kick", "pivot": [0.3, 0.95], "mirror": False}}},
-        {"name": "arm-l", "scale": 0.52, "pivot": [0.8, 0.9], "joint": [-160, 440], "z": -2},
-        {"name": "arm-r", "scale": 0.52, "pivot": [0.2, 0.9], "joint": [160, 440], "z": -2},
-        {"name": "sprout", "scale": 0.75, "pivot": [0.5, 0.1], "joint": [0, 735], "z": -1},
-        {"name": "body", "scale": 1.0, "pivot": [0.5, 0.0], "joint": [0, 110], "z": 0},
+        {"name": "foot-l", "scale": 0.5, "pivot": [0.5, 0.98], "joint": [-70, 104], "z": -3,
+         "variants": {"kick": {"image": "foot-kick", "pivot": [0.4, 0.97], "mirror": True}}},
+        {"name": "foot-r", "scale": 0.5, "pivot": [0.5, 0.98], "joint": [70, 104], "z": -3,
+         "variants": {"kick": {"image": "foot-kick", "pivot": [0.4, 0.97], "mirror": False}}},
+        {"name": "arm-l", "scale": 0.52, "pivot": [0.8, 0.9], "joint": [-160, 405], "z": -2},
+        {"name": "arm-r", "scale": 0.52, "pivot": [0.2, 0.9], "joint": [160, 405], "z": -2},
+        {"name": "sprout", "scale": 0.75, "pivot": [0.5, 0.1], "joint": [0, 700], "z": -1},
+        {"name": "body", "scale": 1.0, "pivot": [0.5, 0.0], "joint": [0, 75], "z": 0},
     ],
 }
 
@@ -50,7 +50,7 @@ def smooth(a, b, x):
 STANCE = 0.4  # share of the cycle each foot spends on the ground; the rest is the swing
 
 
-KICK_UNTIL = 0.55  # share of the swing that shows the sole; after that the foot reaches forward heel-first
+KICK_UNTIL = 0.6  # share of the swing that shows the sole; after that the foot reaches forward heel-first
 
 
 def foot_pose(phase, side):
@@ -64,17 +64,17 @@ def foot_pose(phase, side):
         land = 1 - smooth(0.0, 0.08, phase)
         # Late in the stance the heel peels up as the foot pushes off.
         peel = smooth(STANCE * 0.55, STANCE, phase)
-        return P(dy=14 * peel, sx=1 + 0.08 * land, sy=1 - 0.12 * land - 0.08 * peel)
+        return P(dy=6 * peel, sx=1 + 0.1 * land, sy=1 - 0.15 * land - 0.06 * peel)
     u = (phase - STANCE) / (1 - STANCE)  # 0 just after push-off, 1 at landing
     # The foot rises fast behind the runner and comes down to land: a smooth arc that peaks early.
     height = math.sin(math.pi * u ** 0.8)
-    rise = 14 + 120 * height - 14 * u
+    rise = 6 + 46 * height - 6 * u
     if u < KICK_UNTIL:
         k = u / KICK_UNTIL
         snap = 0.85 + 0.15 * smooth(0.0, 0.2, k)
         size = (1.08 - 0.1 * k) * snap
         # Kicked back toward the camera: big and tipped up, curling as it rises.
-        return P(dy=rise, deg=side * (22 - 18 * k), sx=size, sy=size, variant="kick")
+        return P(dy=rise, deg=side * (16 - 12 * k), sx=size, sy=size, variant="kick")
     k = (u - KICK_UNTIL) / (1 - KICK_UNTIL)
     snap = 0.88 + 0.12 * smooth(0.0, 0.25, k)
     # Reaching forward to land, heel toward you, a little smaller because it's further away.
