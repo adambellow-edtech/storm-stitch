@@ -1,44 +1,66 @@
-"""Cutout rig tool: assembles part PNGs on joints, renders preview animations, and exports game files.
+"""Cutout rig tool: assembles part drawings on joints, renders preview animations, and exports game files.
 
 Coordinates are pixels with y up, origin at the ground under the character's center (SpriteKit's
 convention), so the game's CutoutRig reads the exported JSON directly.
 
-A part can have alternate drawings ("variants"), for example a foot kicked up showing its sole.
-A pose picks a variant per part; a variant can be the mirror image of its picture.
+Hands and feet swap between a few drawings as they move (the way cutout animation is done), while the
+body, arms and tuft turn and bounce on their joints. Each part has a default drawing ("image") and
+named alternates ("variants"); a pose picks one per part.
+
+Usage:  python3 rig.py <parts-folder> <preview-folder>
 """
 import json
 import math
 import sys
 from PIL import Image, ImageDraw
 
+PARTS_DIR = sys.argv[1] if len(sys.argv) > 1 else "bramble4"
+
+
+def _pivots():
+    try:
+        with open(f"{PARTS_DIR}/pivots.json") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+PIV = _pivots()
+
+
+def limb(name, image, joint, scale, z, variants):
+    """A part whose drawings all come from the pivot file: default `image`, plus `variants`."""
+    return {"name": name, "image": image, "scale": scale, "pivot": PIV.get(image, [0.5, 1.0]), "joint": joint,
+            "z": z, "variants": {v: {"image": img, "pivot": PIV.get(img, [0.5, 1.0])} for v, img in variants.items()}}
+
+
 MANIFEST = {
     "name": "bramble",
     "view": "back",
-    # scale: picture to rig size. pivot: fraction of the picture (x from left, y from bottom).
+    # scale: drawing to rig size. pivot: fraction of the drawing (x from left, y from bottom).
     # joint: where the pivot sits, from the ground center, y up. z: draw order (higher on top).
     "parts": [
-        {"name": "foot-l", "scale": 0.5, "pivot": [0.5, 0.98], "joint": [-70, 104], "z": -3,
-         "variants": {"kick": {"image": "foot-kick", "pivot": [0.4, 0.97], "mirror": True}}},
-        {"name": "foot-r", "scale": 0.5, "pivot": [0.5, 0.98], "joint": [70, 104], "z": -3,
-         "variants": {"kick": {"image": "foot-kick", "pivot": [0.4, 0.97], "mirror": False}}},
-        {"name": "arm-l", "scale": 0.52, "pivot": [0.8, 0.9], "joint": [-160, 405], "z": -2},
-        {"name": "arm-r", "scale": 0.52, "pivot": [0.2, 0.9], "joint": [160, 405], "z": -2},
-        {"name": "sprout", "scale": 0.75, "pivot": [0.5, 0.1], "joint": [0, 700], "z": -1},
-        {"name": "body", "scale": 1.0, "pivot": [0.5, 0.0], "joint": [0, 75], "z": 0},
+        limb("foot-l", "foot-plant", [-62, 166], 0.4, -3,
+             {"push": "foot-push", "kick": "foot-kick", "pass": "foot-pass"}),
+        limb("foot-r", "foot-plant-r", [62, 166], 0.4, -3,
+             {"push": "foot-push-r", "kick": "foot-kick-r", "pass": "foot-pass-r"}),
+        limb("arm-l", "arm-hang", [-212, 470], 0.46, -2,
+             {"fwd": "arm-fwd", "back": "arm-back", "up": "arm-up"}),
+        limb("arm-r", "arm-hang-r", [212, 470], 0.46, -2,
+             {"fwd": "arm-fwd-r", "back": "arm-back-r", "up": "arm-up-r"}),
+        {"name": "sprout", "image": "sprout", "scale": 0.75, "pivot": [0.5, 0.1], "joint": [0, 735], "z": -1},
+        {"name": "body", "image": "body", "scale": 1.0, "pivot": [0.5, 0.0], "joint": [0, 105], "z": 0},
     ],
 }
 
 # Parts that ride on the torso, so they bob and sway with the body.
 TORSO = {"body", "arm-l", "arm-r", "sprout"}
-# A foot lifted past this switches to its kicked drawing and passes in front of the body.
-KICK_AT = 0.3
+# Drawings that show a foot kicked up toward the camera, so it passes in front of the body.
+IN_FRONT = {"kick"}
 
 
-def P(dx=0.0, dy=0.0, deg=0.0, sx=1.0, sy=1.0, variant=None, blend=None):
-    """blend: how much of the variant drawing shows, 0 to 1. None means all or nothing by `variant`."""
-    if blend is None:
-        blend = 1.0 if variant else 0.0
-    return {"dx": dx, "dy": dy, "deg": deg, "sx": sx, "sy": sy, "variant": variant, "blend": blend}
+def P(dx=0.0, dy=0.0, deg=0.0, sx=1.0, sy=1.0, variant=None):
+    return {"dx": dx, "dy": dy, "deg": deg, "sx": sx, "sy": sy, "variant": variant}
 
 
 def smooth(a, b, x):
@@ -47,66 +69,70 @@ def smooth(a, b, x):
     return t * t * (3 - 2 * t)
 
 
-STANCE = 0.4  # share of the cycle each foot spends on the ground; the rest is the swing
+def snap(t, length=0.25):
+    """Size just after a drawing swaps in: starts 90% and settles to 100%, so the swap reads as a snap."""
+    return 0.9 + 0.1 * smooth(0.0, length, t)
 
 
-KICK_UNTIL = 0.6  # share of the swing that shows the sole; after that the foot reaches forward heel-first
+# One step, from the foot landing (0) to landing again (1): where each drawing starts.
+FOOT_TIMING = [(0.0, None), (0.3, "push"), (0.42, "kick"), (0.68, "pass")]
 
 
 def foot_pose(phase, side):
-    """One foot through a stride. phase 0 is the foot landing; side -1 is the left foot, 1 the right.
-    From behind, the sole shows only while the foot is kicked up behind the runner. It swaps to the
-    kicked drawing at push-off and back to the heel as it swings forward to land: both swaps happen
-    while the foot moves fast, each with a quick squash so they read as a snap rather than a pop."""
+    """One foot through a stride, swapping drawings: planted, push-off, kicked up, passing forward."""
     phase %= 1.0
-    if phase < STANCE:
-        # Landing: the foot squashes flat for a moment, then stands.
+    if phase < 0.3:
+        # Planted. Landing squashes it flat for a moment.
         land = 1 - smooth(0.0, 0.08, phase)
-        # Late in the stance the heel peels up as the foot pushes off.
-        peel = smooth(STANCE * 0.55, STANCE, phase)
-        return P(dy=6 * peel, sx=1 + 0.1 * land, sy=1 - 0.15 * land - 0.06 * peel)
-    u = (phase - STANCE) / (1 - STANCE)  # 0 just after push-off, 1 at landing
-    # The foot rises fast behind the runner and comes down to land: a smooth arc that peaks early.
-    height = math.sin(math.pi * u ** 0.8)
-    rise = 6 + 46 * height - 6 * u
-    if u < KICK_UNTIL:
-        k = u / KICK_UNTIL
-        snap = 0.85 + 0.15 * smooth(0.0, 0.2, k)
-        size = (1.08 - 0.1 * k) * snap
-        # Kicked back toward the camera: big and tipped up, curling as it rises.
-        return P(dy=rise, deg=side * (16 - 12 * k), sx=size, sy=size, variant="kick")
-    k = (u - KICK_UNTIL) / (1 - KICK_UNTIL)
-    snap = 0.88 + 0.12 * smooth(0.0, 0.25, k)
-    # Reaching forward to land, heel toward you, a little smaller because it's further away.
-    return P(dy=rise, deg=side * -6 * (1 - k), sx=0.94 * snap + 0.06 * k, sy=0.94 * snap + 0.06 * k)
+        return P(sx=1 + 0.1 * land, sy=1 - 0.14 * land)
+    if phase < 0.42:
+        k = (phase - 0.3) / 0.12
+        s = snap(k)
+        # Push-off: the heel rolls up, the foot pressing into the ground.
+        return P(dy=4 * k, deg=side * -4 * k, sx=s, sy=s, variant="push")
+    if phase < 0.68:
+        k = (phase - 0.42) / 0.26
+        s = snap(k)
+        # Kicked up behind the runner, sole to the camera, rising in an arc.
+        return P(dy=8 + 34 * math.sin(math.pi * k), deg=side * (8 - 12 * k), sx=s, sy=s, variant="kick")
+    k = (phase - 0.68) / 0.32
+    s = snap(k)
+    # Passing forward under the body to land. The drawing is already lifted; it drops to the ground.
+    return P(dy=6 - 10 * smooth(0.4, 1.0, k), deg=side * 4 * (1 - k), sx=s, sy=s, variant="pass")
+
+
+def arm_pose(forward, side):
+    """forward from -1 (swung back toward you) to 1 (swung forward, away from you)."""
+    if forward > 0.45:
+        variant, base = "fwd", 0.7
+    elif forward < -0.45:
+        variant, base = "back", -0.7
+    else:
+        variant, base = None, 0.0
+    # Within each drawing the arm keeps turning a little, so the swing never stops.
+    rest = forward - base
+    return P(dy=6 * forward, deg=side * 10 * rest, variant=variant)
 
 
 def run_pose(t):
     """Running away from the camera. t goes 0 to 1 over one cycle (two steps)."""
+    stance_mid = 0.15
     p = 2 * math.pi * t
-    # Each foot lands once a cycle, half a cycle apart.
-    left, right = t, t + 0.5
-    # The body is lowest mid-stance (a foot under it) and highest mid-flight, twice a cycle.
-    low = 0.5 + 0.5 * math.cos(4 * math.pi * (t - STANCE / 2))  # 1 at mid-stance
+    # Lowest when a foot is planted under the body, highest in between steps.
+    low = 0.5 + 0.5 * math.cos(4 * math.pi * (t - stance_mid))
     bob = 16 * (1 - low)
-    sway = 3 * math.cos(p - math.pi * STANCE)  # leans over whichever foot is planted
-    # Arms swing opposite their own leg: forward (away from you) while that leg kicks back.
-    swing = math.sin(p - math.pi * STANCE)
-
-    def arm(forward, side):
-        return P(dy=16 * forward, deg=side * 16 * forward, sx=1 - 0.09 * forward, sy=1 - 0.09 * forward)
-
-    # The sprout follows the body a beat late, so it flops and settles.
+    sway = 3 * math.cos(p - 2 * math.pi * stance_mid)
+    # Each arm swings opposite its own leg: forward while that leg kicks back.
+    swing = math.sin(p - 2 * math.pi * 0.3)
     lag = 0.09
-    low_late = 0.5 + 0.5 * math.cos(4 * math.pi * (t - lag - STANCE / 2))
-    sway_late = 3 * math.cos(2 * math.pi * (t - lag) - math.pi * STANCE)
+    low_late = 0.5 + 0.5 * math.cos(4 * math.pi * (t - lag - stance_mid))
+    sway_late = 3 * math.cos(2 * math.pi * (t - lag - stance_mid))
     return {
-        "foot-l": foot_pose(left, -1),
-        "foot-r": foot_pose(right, 1),
-        "arm-l": arm(swing, 1),
-        "arm-r": arm(-swing, -1),
+        "foot-l": foot_pose(t, -1),
+        "foot-r": foot_pose(t + 0.5, 1),
+        "arm-l": arm_pose(swing, 1),
+        "arm-r": arm_pose(-swing, -1),
         "sprout": P(dy=-6 * low_late, deg=-sway_late * 3, sx=1 + 0.05 * low_late, sy=1 - 0.08 * low_late),
-        # A little squash on each landing, a little stretch in the air.
         "body": P(dy=bob, deg=sway, sx=1 + 0.03 * low - 0.015 * (1 - low), sy=1 - 0.04 * low + 0.02 * (1 - low)),
     }
 
@@ -114,39 +140,34 @@ def run_pose(t):
 def jump_pose(t):
     """A jump, t from 0 at take-off to 1 at landing. The game moves the rig up and down."""
     up = math.sin(math.pi * t)
-    arms = min(1, t * 4) * (1 - max(0, t - 0.75) * 4)
+    feet = "push" if t < 0.12 else ("kick" if t < 0.8 else "pass")
+    arms = "back" if t < 0.1 else ("up" if t < 0.85 else None)
+    raise_k = smooth(0.1, 0.3, t)
     return {
-        # Both legs tuck up with their soles showing.
-        "foot-l": P(dy=40 * up, variant="kick" if up > 0.25 else None),
-        "foot-r": P(dy=40 * up, variant="kick" if up > 0.25 else None),
-        # Arms swing up and out past the leaves, like a cheer.
-        "arm-l": P(dx=-30 * arms, dy=40 * arms, deg=-125 * arms),
-        "arm-r": P(dx=30 * arms, dy=40 * arms, deg=125 * arms),
+        "foot-l": P(dy=10 * up, variant=feet),
+        "foot-r": P(dy=10 * up, variant=feet),
+        # Arms wind back, then throw up in a cheer, wobbling a little at the top.
+        "arm-l": P(dy=12 * raise_k * up, deg=6 * math.sin(6 * math.pi * t) * raise_k, variant=arms),
+        "arm-r": P(dy=12 * raise_k * up, deg=-6 * math.sin(6 * math.pi * t) * raise_k, variant=arms),
         "sprout": P(deg=14 * math.cos(2 * math.pi * t)),
         "body": P(sx=1 - 0.05 * up, sy=1 + 0.07 * up),
     }
 
 
-def load_images(folder):
+def load_images(folder=PARTS_DIR):
     names = set()
     for part in MANIFEST["parts"]:
-        names.add(part["name"])
+        names.add(part["image"])
         for v in part.get("variants", {}).values():
             names.add(v["image"])
     return {n: Image.open(f"{folder}/{n}.png").convert("RGBA") for n in names}
 
 
 def picture_for(part, variant, images):
-    """The picture and pivot a part draws with for a variant (or its default)."""
     if variant and variant in part.get("variants", {}):
         v = part["variants"][variant]
-        img = images[v["image"]]
-        pivot = list(v["pivot"])
-        if v.get("mirror"):
-            img = img.transpose(Image.FLIP_LEFT_RIGHT)
-            pivot[0] = 1 - pivot[0]
-        return img, pivot
-    return images[part["name"]], part["pivot"]
+        return images[v["image"]], v["pivot"]
+    return images[part["image"]], part["pivot"]
 
 
 def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
@@ -161,26 +182,12 @@ def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
     body = pose["body"]
 
     def order(part):
-        if part["name"].startswith("foot") and pose[part["name"]]["blend"] > 0.5:
-            return 1  # seen from behind, a kicked foot passes in front of the body
-        return part["z"]
+        return 1 if pose[part["name"]]["variant"] in IN_FRONT else part["z"]
 
-    layers = []
     for part in sorted(MANIFEST["parts"], key=order):
-        q = pose[part["name"]]
-        if q["variant"] and 0 < q["blend"] < 1:
-            # Crossfade: the part's own drawing fading out under the variant fading in.
-            layers.append((part, None, 1 - q["blend"]))
-            layers.append((part, q["variant"], q["blend"]))
-        else:
-            layers.append((part, q["variant"] if q["blend"] >= 1 else None, 1.0))
-    for part, variant, alpha in layers:
         name = part["name"]
         q = pose[name]
-        img, pivot = picture_for(part, variant, images)
-        if alpha < 1:
-            img = img.copy()
-            img.putalpha(img.getchannel("A").point(lambda v: int(v * alpha)))
+        img, pivot = picture_for(part, q["variant"], images)
         jx, jy = part["joint"]
         deg = q["deg"]
         if name in TORSO and name != "body":
@@ -206,61 +213,66 @@ def render(images, pose, lift=0.0, canvas=(760, 900), ground=40, scale=0.62):
     return frame
 
 
-def preview(folder, out_dir, size=(380, 450)):
-    images = load_images(folder)
+def strip(out_path, n=12, cols=6, size=(253, 300)):
+    images = load_images()
+    frames = [render(images, run_pose(i / n)).convert("RGB").resize(size, Image.LANCZOS) for i in range(n)]
+    rows = (n + cols - 1) // cols
+    sheet = Image.new("RGB", (size[0] * cols, size[1] * rows), (255, 255, 255))
+    for i, f in enumerate(frames):
+        sheet.paste(f, ((i % cols) * size[0], (i // cols) * size[1]))
+    sheet.save(out_path)
+
+
+def preview(out_dir, size=(380, 450)):
+    images = load_images()
     frames = []
-    # Two cycles at game speed (about 0.23 s each), then two at half speed so the motion is easy to read.
-    for steps, cycles in [(14, 3), (28, 2)]:
+    # Three cycles near game speed, then two at a quarter speed so each drawing can be seen.
+    for steps, cycles in [(14, 3), (40, 2)]:
         for _ in range(cycles):
             frames += [render(images, run_pose(i / steps)) for i in range(steps)]
-    frames += [render(images, jump_pose(i / 17), lift=260 * math.sin(math.pi * i / 17)) for i in range(18)]
-    frames += [render(images, run_pose(i / 10)) for i in range(10)]
+    frames += [render(images, jump_pose(i / 23), lift=260 * math.sin(math.pi * i / 23)) for i in range(24)]
+    frames += [render(images, run_pose(i / 14)) for i in range(14)]
     small = [f.convert("RGB").resize(size, Image.LANCZOS) for f in frames]
     small[0].save(f"{out_dir}/{MANIFEST['name']}-rig-preview.gif", save_all=True, append_images=small[1:],
                   duration=33, loop=0)
-    keys = [run_pose(0), run_pose(0.25), run_pose(0.5), run_pose(0.75), jump_pose(0.5)]
-    sheet = Image.new("RGB", (size[0] * len(keys), size[1]), (255, 255, 255))
-    for i, pose in enumerate(keys):
-        sheet.paste(render(images, pose).convert("RGB").resize(size, Image.LANCZOS), (size[0] * i, 0))
-    sheet.save(f"{out_dir}/{MANIFEST['name']}-rig-keys.png")
 
 
-def export(folder, art_dir, export_scale=0.5):
-    """Writes game-ready pictures and the joint file. Pictures are pre-scaled, so in the game a part's
-    sprite size is its picture size, and joints are in the same pixels."""
+def export(art_dir, export_scale=0.5):
+    """Writes game-ready drawings and the joint file. Drawings are pre-scaled, so in the game a part's
+    sprite size is its drawing's size, and joints are in the same pixels."""
     name = MANIFEST["name"]
     out = {"name": name, "view": MANIFEST["view"], "parts": []}
-    images = load_images(folder)
+    images = load_images()
     written = set()
 
     def save(image_name, k):
-        if image_name in written:
-            return
-        img = images[image_name]
-        img.resize((round(img.width * k), round(img.height * k)), Image.LANCZOS).save(
-            f"{art_dir}/{name}-rig-{image_name}.png", optimize=True)
-        written.add(image_name)
+        if image_name not in written:
+            img = images[image_name]
+            img.resize((round(img.width * k), round(img.height * k)), Image.LANCZOS).save(
+                f"{art_dir}/{name}-rig-{image_name}.png", optimize=True)
+            written.add(image_name)
 
     top = 0.0
     for part in MANIFEST["parts"]:
         k = part["scale"] * export_scale
-        save(part["name"], k)
-        entry = {"name": part["name"], "pivot": part["pivot"],
+        save(part["image"], k)
+        entry = {"name": part["name"], "image": part["image"], "pivot": part["pivot"],
                  "joint": [round(part["joint"][0] * export_scale, 2), round(part["joint"][1] * export_scale, 2)],
                  "z": part["z"]}
         if part.get("variants"):
             entry["variants"] = {}
             for vname, v in part["variants"].items():
                 save(v["image"], k)
-                entry["variants"][vname] = {"image": v["image"], "pivot": v["pivot"], "mirror": v.get("mirror", False)}
+                entry["variants"][vname] = {"image": v["image"], "pivot": v["pivot"]}
         out["parts"].append(entry)
-        h = images[part["name"]].height * k
+        h = images[part["image"]].height * k
         top = max(top, part["joint"][1] * export_scale + (1 - part["pivot"][1]) * h)
     out["height"] = round(top, 2)
+    out["inFront"] = sorted(IN_FRONT)
     with open(f"{art_dir}/{name}-rig.json", "w") as f:
         json.dump(out, f, indent=2)
     return out
 
 
 if __name__ == "__main__":
-    preview(sys.argv[1] if len(sys.argv) > 1 else MANIFEST["name"], sys.argv[2] if len(sys.argv) > 2 else ".")
+    preview(sys.argv[2] if len(sys.argv) > 2 else ".")
