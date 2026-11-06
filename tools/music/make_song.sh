@@ -4,6 +4,10 @@
 # ALAC .caf files in StormStitch/Sounds.
 #
 #   ./make_song.sh canyon base.mp3 drive.mp3 [bpm]
+#   ./make_song.sh chase base.mp3 drive.mp3      # the Shredder chase: music-chase-base/drive.caf
+#
+# The first argument is only the name in the file names, so any song works the same way: a world id
+# (canyon, lagoon, peaks), a holiday (winter, harvest), main, or chase.
 #
 # Needs ffmpeg (brew install ffmpeg) and afconvert (built into macOS).
 set -euo pipefail
@@ -23,4 +27,8 @@ for layer in base drive; do
   echo "wrote $out/music-$world-$layer.caf"
 done
 rm -rf "$tmp"
-echo "Run xcodegen, then build: the $world stages now play this song."
+if [ "$world" = chase ]; then
+  echo "Run xcodegen, then build: every Shredder chase finale now plays this song."
+else
+  echo "Run xcodegen, then build: the $world stages now play this song."
+fi

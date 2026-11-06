@@ -29,6 +29,39 @@ struct RunSnapshot {
     var shieldActive: Bool
 }
 
+/// The Shredder's chase: every world's last stage is a run from the storm itself, to its own chase music.
+/// A world can add cheap flavor of its own on top. Notebook Meadow and Origami Peaks keep their
+/// finales as they were (only the chase music is new there).
+struct ShredderChase {
+    /// Tint for the storm's cloud layers; nil keeps the usual ink.
+    var stormTint: UIColor? = nil
+    /// Color of the torn scraps the storm throws up; nil keeps the usual gray paper.
+    var scrapColor: UIColor? = nil
+    /// Hazards are drawn from this table instead of an even mix (a repeated kind comes up more).
+    var hazardMix: [RunScene.HazardKind]? = nil
+    /// The storm strikes and the Shredder laughs a moment into the run, with this line on screen.
+    var introLine: String? = nil
+}
+
+extension World {
+    var shredderChase: ShredderChase {
+        switch id {
+        case "canyon":
+            // Cardboard-brown clouds spitting box scraps, and the cartons come tumbling.
+            return ShredderChase(stormTint: UIColor(hex: 0x6B4A2B), scrapColor: UIColor(hex: 0xC9A57A),
+                                 hazardMix: [.crate, .crate, .low, .overhead],
+                                 introLine: "The Shredder is tearing up the boxes!")
+        case "lagoon":
+            // Deep ink-blue clouds spraying ink drops, and blots to hop all the way.
+            return ShredderChase(stormTint: UIColor(hex: 0x23306A), scrapColor: UIColor(hex: 0x5B7BD5),
+                                 hazardMix: [.low, .low, .overhead, .crate],
+                                 introLine: "The Shredder churns up the ink!")
+        default:
+            return ShredderChase()
+        }
+    }
+}
+
 extension RunScene {
 
     // MARK: Starting a run
@@ -73,6 +106,8 @@ extension RunScene {
         currentPose = ""
 
         applyTheme(themeFor(newMode))
+        let chase = shredderChase
+        applyChaseLook(chase)
 
         resetWorld()
         if monster.ability == .frost {
@@ -95,6 +130,7 @@ extension RunScene {
         applyFog()
         updateHUD()
         audio.play(.start)
+        audio.setChase(chase != nil)
         audio.setMusic(playing: true)
         haptics.success()
         velocityY = tuning.jumpVelocity * 0.7
@@ -112,6 +148,39 @@ extension RunScene {
         case .endless: banner = "Endless: outrun the storm!"
         }
         popText(banner, size: 24, color: .white, at: CGPoint(x: size.width / 2, y: size.height * 0.66), rise: 20, life: 2.2)
+
+        removeAction(forKey: "chaseIntro")
+        if let line = chase?.introLine {
+            run(.sequence([
+                .wait(forDuration: 1.6),
+                .run { [weak self] in
+                    guard let self, self.state == .running else { return }
+                    self.lightningCooldown = 0
+                    self.lightningStrike(power: 2)
+                    self.audio.play(.evilLaugh, volume: 0.7)
+                    self.popText(line, size: 22, color: UIColor(hex: 0xFFD9D2),
+                                 at: CGPoint(x: self.size.width / 2, y: self.size.height * 0.58), rise: 16, life: 2.2)
+                }
+            ]), withKey: "chaseIntro")
+        }
+    }
+
+    /// The Shredder chase for the stage being played, or nil when this run isn't one.
+    var shredderChase: ShredderChase? {
+        guard case .stage(let index) = mode, World.isShredderChase(stage: index) else { return nil }
+        return World.all[World.index(ofStage: index)].shredderChase
+    }
+
+    /// Tints the storm for a chase that asks for it, or puts the usual ink storm back.
+    func applyChaseLook(_ chase: ShredderChase?) {
+        let tint = chase?.stormTint
+        stormBack.color = tint ?? Palette.ink
+        stormBack.colorBlendFactor = tint == nil ? 0.35 : 0.5
+        stormFar?.color = tint ?? Palette.ink
+        stormFar?.colorBlendFactor = tint == nil ? 0.45 : 0.55
+        stormNear?.color = tint ?? Palette.ink
+        stormNear?.colorBlendFactor = tint == nil ? 0.25 : 0.4
+        stormScraps?.particleColor = chase?.scrapColor ?? UIColor(hex: 0xD2D4DB)
     }
 
     // MARK: Per-frame run additions
@@ -775,6 +844,9 @@ extension RunScene {
         theme = newTheme
         themeApplied = true
         audio.setMusicTheme(newTheme)
+        // Menus and every new run start outside a chase; startRun turns one back on.
+        audio.setChase(false)
+        applyChaseLook(nil)
         guard changed else { return }
         layoutScene()
         for emitter in holidayEmitters { emitter.removeFromParent() }

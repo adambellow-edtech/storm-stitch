@@ -10,6 +10,11 @@ final class GameAudio {
         case crack, evilLaugh, defeat
     }
 
+    /// Short musical cues for the end of a run. The music ducks under them while they play.
+    enum Sting: CaseIterable {
+        case victory, fail
+    }
+
     var musicOn = true {
         didSet { synth.volume = musicOn ? 0.5 : 0 }
     }
@@ -31,6 +36,22 @@ final class GameAudio {
     private var songCache: (name: String, base: AVAudioPCMBuffer, drive: AVAudioPCMBuffer)?
     private var songLoading = false
     private lazy var hasSong: Bool = Bundle.main.url(forResource: "music-main-base", withExtension: "caf") != nil
+    /// The Shredder chase's own song, once `music-chase-base/drive.caf` are in the app.
+    private lazy var hasChaseSong: Bool =
+        Bundle.main.url(forResource: "music-chase-base", withExtension: "caf") != nil &&
+        Bundle.main.url(forResource: "music-chase-drive", withExtension: "caf") != nil
+    /// The song the current world or holiday asks for (the chase song takes over during a chase).
+    private var themeSong = "main"
+    /// True when the current world has no song of its own, so the synth plays it in that world's colors.
+    private var worldSynth = false
+    /// True during a Shredder chase finale.
+    private var chase = false
+    /// Whether the game wants music right now; `routeMusic()` decides who plays it.
+    private var musicPlaying = false
+    /// Ducking under a sting: seconds left, and the eased level the song layers are multiplied by.
+    private var duckTimer = 0.0
+    private var duckLevel: Float = 1
+    private static let duckDepth: Float = 0.25
     var sfxOn = true
 
     private let engine = AVAudioEngine()
@@ -39,6 +60,7 @@ final class GameAudio {
     private var players: [AVAudioPlayerNode] = []
     private var nextPlayer = 0
     private var buffers: [SFX: AVAudioPCMBuffer] = [:]
+    private var stings: [Sting: AVAudioPCMBuffer] = [:]
     private var chimes: [AVAudioPCMBuffer] = []
     private let synth: MusicSynth
     private var started = false
@@ -129,7 +151,7 @@ final class GameAudio {
                 } else {
                     // The files wouldn't load: go back to the synthesized music for this session.
                     self.hasSong = false
-                    self.synth.playing = self.songWanted
+                    self.routeMusic()
                 }
             }
         }
@@ -159,6 +181,14 @@ final class GameAudio {
     /// Runs 30 times a second: fades the song in and out, crossfades between versions,
     /// and eases the drive layer toward the current intensity.
     private func tickSong() {
+        // Ducking under a sting: dip fast, come back up gently once it has finished.
+        if duckTimer > 0 {
+            duckTimer -= 1.0 / 30
+            if duckTimer <= 0 { synth.duck = 1 }
+        }
+        let duckWanted: Float = duckTimer > 0 ? GameAudio.duckDepth : 1
+        duckLevel += (duckWanted - duckLevel) * (duckWanted < duckLevel ? 0.35 : 0.08)
+
         guard hasSong else { return }
         // A route change or a phone call stops the engine and the players with it: start again.
         if songRunning && (!engine.isRunning || !songBase.isPlaying) { songRunning = false }
@@ -183,15 +213,17 @@ final class GameAudio {
             // Fading out: for a pause or game over, or before switching to another version.
             songFade = max(0, songFade - Float(1.0 / 15))
             if needsSwitch && songCache?.name != songName { loadSongInBackground(songName) }
-            if songFade == 0 && songRunning && (needsSwitch || !musicOn) {
-                // Switch versions (the next tick starts the new one), or stop if music is off.
+            if songFade == 0 && songRunning && (needsSwitch || !musicOn || synth.playing) {
+                // Switch versions (the next tick starts the new one), or stop if music is off or the
+                // synth has taken over (a world with no song, or a chase with no chase song).
                 // Otherwise the loop keeps going silently, so a pause picks up where it left off.
                 stopSong()
             }
         }
-        driveLevel += (driveTarget - driveLevel) * 0.06
-        songBase.volume = songFade * 0.6
-        songDrive.volume = songFade * 0.6 * driveLevel
+        // A chase plays its drive layer at full strength the whole way.
+        driveLevel += ((chase ? 1 : driveTarget) - driveLevel) * 0.06
+        songBase.volume = songFade * 0.6 * duckLevel
+        songDrive.volume = songFade * 0.6 * driveLevel * duckLevel
     }
 
     // MARK: Playback
@@ -208,12 +240,35 @@ final class GameAudio {
     }
 
     func setMusic(playing: Bool) {
-        if hasSong {
-            synth.playing = false
-            songWanted = playing
-        } else {
-            synth.playing = playing
-        }
+        musicPlaying = playing
+        routeMusic()
+    }
+
+    /// Picks who plays the music: the recorded song layers or the synth. The synth covers a world
+    /// with no song of its own, a chase with no chase song, and any session where the songs won't load.
+    private func routeMusic() {
+        let chaseSong = chase && hasChaseSong
+        let useSynth = !hasSong || (chase ? !chaseSong : worldSynth)
+        songName = chaseSong ? "chase" : themeSong
+        synth.chase = chase
+        synth.playing = musicPlaying && useSynth
+        songWanted = musicPlaying && !useSynth
+    }
+
+    /// Switches to the tense chase arrangement for a Shredder chase, and back.
+    /// Uses `music-chase-base/drive.caf` when bundled, otherwise the synth's chase mode.
+    func setChase(_ on: Bool) {
+        guard on != chase else { return }
+        chase = on
+        routeMusic()
+    }
+
+    /// Plays the victory or fail sting and ducks the music under it.
+    func playSting(_ sting: Sting, volume: Float = 0.85) {
+        guard sfxOn, let buffer = stings[sting] else { return }
+        duckTimer = Double(buffer.frameLength) / sampleRate
+        synth.duck = GameAudio.duckDepth
+        schedule(buffer, volume: volume)
     }
 
     // MARK: Story score
@@ -227,6 +282,7 @@ final class GameAudio {
 
     /// Swaps the looping game music for the story's own score, from the top.
     func startStoryScore() {
+        musicPlaying = false
         synth.playing = false
         songWanted = false
         guard musicOn else { return }
@@ -271,19 +327,27 @@ final class GameAudio {
     }
 
     /// Switches the song for a world or a holiday. Each world plays "music-<world>-base/drive.caf"
-    /// once those files are in the app, and Notebook Meadow's song until then.
+    /// once those files are in the app. Until then a later world plays the synth in its own colors
+    /// (canyon twang, lagoon marimba, peaks koto and taiko), and Notebook Meadow plays its own song.
     func setMusicTheme(_ theme: Theme?) {
         let holiday = theme?.holiday
         synth.theme = holiday == .snow ? 2 : holiday == .harvest ? 1 : 0
+        synth.world = 0
+        worldSynth = false
         if let holiday {
-            songName = holiday == .snow ? "winter" : "harvest"
+            themeSong = holiday == .snow ? "winter" : "harvest"
         } else if let key = theme?.key,
                   Bundle.main.url(forResource: "music-\(key)-base", withExtension: "caf") != nil,
                   Bundle.main.url(forResource: "music-\(key)-drive", withExtension: "caf") != nil {
-            songName = key
+            themeSong = key
         } else {
-            songName = "main"
+            themeSong = "main"
+            if let key = theme?.key, let flavor = MusicSynth.worldFlavor(key) {
+                synth.world = flavor
+                worldSynth = true
+            }
         }
+        routeMusic()
     }
 
     func setIntensity(_ value: Float) {
@@ -420,9 +484,109 @@ final class GameAudio {
         }
 
         buildStormSounds(noise: &noise)
+        buildStings(noise: &noise)
         // Recorded takes win over the synthesized ones when they're bundled.
         if let laugh = loadBuffer("storm-laugh") { buffers[.evilLaugh] = laugh }
         if let defeat = loadBuffer("storm-defeat") { buffers[.defeat] = defeat }
+        if let victory = loadBuffer("sting-victory") { stings[.victory] = victory }
+        if let fail = loadBuffer("sting-fail") { stings[.fail] = fail }
+    }
+
+    /// The end-of-run stings, synthesized like the rest until `sting-victory.caf` / `sting-fail.caf` are bundled.
+    private func buildStings(noise: inout NoiseSource) {
+        let twoPi = 2 * Double.pi
+
+        // Victory, about 4.4 s in D major: a quick rising run of plucks, each with a little stitch "zip",
+        // a brassy ta-ta-taaa fanfare, then a ringing chord with a sparkle of bells and a soft timpani.
+        let run: [(start: Double, note: Double)] = [(0.00, 62), (0.07, 66), (0.14, 69), (0.21, 74), (0.28, 78), (0.35, 81)]
+        let horns: [(start: Double, note: Double, length: Double)] = [
+            (0.50, 74, 0.13), (0.66, 74, 0.13), (0.82, 81, 0.40), (1.26, 78, 0.12), (1.40, 81, 0.12),
+            (1.56, 62, 2.4), (1.56, 69, 2.4), (1.56, 74, 2.4), (1.56, 78, 2.4), (1.56, 86, 2.4)
+        ]
+        let bells: [(start: Double, note: Double)] = [(1.56, 86), (1.62, 90), (1.68, 93), (1.74, 98), (1.86, 102)]
+        let brassWeights = [1.0, 0.55, 0.35, 0.2, 0.12]
+        let victoryLength = 4.4
+        var zipLow = 0.0
+        var noiseV = noise
+        stings[.victory] = makeBuffer(victoryLength) { t in
+            var s = 0.0
+            for pluck in run where t >= pluck.start {
+                let local = t - pluck.start
+                guard local < 0.6 else { continue }
+                let f = self.midi(pluck.note)
+                s += (sin(twoPi * f * local) + 0.35 * sin(twoPi * f * 2 * local)) * exp(-local * 8) * 0.22
+            }
+            // Stitch zips: a 25 ms burst of bright noise at each pluck of the run.
+            let n = noiseV.next()
+            zipLow += 0.3 * (n - zipLow)
+            for pluck in run where t >= pluck.start && t < pluck.start + 0.025 {
+                s += (n - zipLow) * (1 - (t - pluck.start) / 0.025) * 0.25
+            }
+            for horn in horns where t >= horn.start && t < horn.start + horn.length + 0.12 {
+                let local = t - horn.start
+                let attack = min(1, local / 0.025)
+                let release = local > horn.length ? max(0, 1 - (local - horn.length) / 0.12) : 1
+                let sustain = horn.length > 1 ? 0.75 + 0.25 * exp(-local * 3) : 1
+                let vibrato = horn.length > 1 && local > 0.3 ? 1 + 0.004 * sin(twoPi * 5.5 * local) : 1
+                let f = self.midi(horn.note) * vibrato
+                var tone = 0.0
+                for (k, weight) in brassWeights.enumerated() {
+                    tone += weight * sin(twoPi * f * Double(k + 1) * local)
+                }
+                s += tone * attack * release * sustain * (horn.length > 1 ? 0.07 : 0.16)
+            }
+            for bell in bells where t >= bell.start {
+                let local = t - bell.start
+                let f = self.midi(bell.note)
+                s += (sin(twoPi * f * local) + 0.3 * sin(twoPi * f * 2.76 * local)) * exp(-local * 4) * 0.08
+            }
+            if t >= 1.56 {
+                let local = t - 1.56
+                s += sin(twoPi * 73.4 * local) * min(1, local / 0.005) * exp(-local * 3) * 0.35
+            }
+            let fade = min(1, (victoryLength - t) / 0.3)
+            return Float(tanh(s * 1.1) * 0.85 * fade)
+        }
+
+        // Fail, 3 s: a sad-trombone "wah, wah, wah, waaah" on a kazoo-ish voice, each note opening like a
+        // wah mute, the last one wobbling and drooping, over plucked bass "bonks", then a tiny thread-snap plink.
+        let wahs: [(start: Double, note: Double, length: Double)] = [(0.00, 70, 0.30), (0.36, 69, 0.30), (0.72, 68, 0.30), (1.08, 67, 1.45)]
+        let failLength = 3.0
+        var failPhase = 0.0
+        var noiseF = noise
+        stings[.fail] = makeBuffer(failLength) { t in
+            var s = 0.0
+            for (i, wah) in wahs.enumerated() where t >= wah.start && t < wah.start + wah.length + 0.06 {
+                let local = t - wah.start
+                let last = i == wahs.count - 1
+                var note = wah.note
+                if last {
+                    if local > 0.25 { note += 0.6 * sin(twoPi * 6 * (local - 0.25)) }
+                    note -= 0.5 * max(0, (local - 0.65) / 0.8)
+                }
+                failPhase += self.midi(note) / self.sampleRate
+                if failPhase >= 1 { failPhase -= 1 }
+                let wahOpen = min(1, local / 0.12)
+                let brightness = 0.35 + 0.4 * wahOpen
+                var tone = 0.0, weight = 1.0
+                for k in 1...6 {
+                    tone += weight * sin(twoPi * failPhase * Double(k))
+                    weight *= brightness
+                }
+                let attack = min(1, local / 0.02)
+                let release = local > wah.length ? max(0, 1 - (local - wah.length) / 0.06) : 1
+                s += tone * attack * release * 0.18
+                // A plucked bass "bonk" under each note.
+                let f = self.midi(wah.note - 24)
+                s += sin(twoPi * f * local) * exp(-local * 10) * 0.35
+            }
+            if t >= 2.62 {
+                let local = t - 2.62
+                s += sin(twoPi * 2093 * local) * exp(-local * 30) * 0.2 + noiseF.next() * exp(-local * 200) * 0.15
+            }
+            let fade = min(1, (failLength - t) / 0.15)
+            return Float(tanh(s * 1.1) * 0.85 * fade)
+        }
     }
 
     /// Reads a bundled mono 44.1 kHz CAF into a buffer the players can schedule.
@@ -559,30 +723,60 @@ struct NoiseSource {
 
 /// Real-time music: a bouncy D minor groove with a spooky theremin lead.
 /// Bass, pizzicato arpeggio, kick and snaps always play; hats and the lead join as intensity rises.
+/// A later world with no song file of its own gets its own key and instrument color, and a Shredder
+/// chase switches to a faster, darker arrangement. Everything here runs in the real-time render
+/// callback: fixed tables and scalar state only, no allocation.
 final class MusicSynth {
     /// 0 the usual spooky song, 1 the harvest (Thanksgiving) version, 2 the winter (Christmas) version.
     var theme = 0
+    /// The world's color when it has no song file: 0 Notebook Meadow, 1 Cardboard Canyon (twangy pluck,
+    /// E minor), 2 Ink Lagoon (bubbly marimba, A minor), 3 Origami Peaks (koto pluck and taiko).
+    /// A holiday theme wins over it.
+    var world = 0
+    /// The Shredder chase arrangement: faster, minor, a pounding low pulse and a menacing lead, all layers in.
+    var chase = false
     var playing = false
     var intensity: Float = 0.3
     var volume: Float = 0.5
+    /// Music level under a sting (1 is full); eased per sample so it never clicks.
+    var duck: Float = 1
+
+    /// The synth flavor for a world id, or nil for one that plays the usual song.
+    static func worldFlavor(_ key: String) -> Int? {
+        switch key {
+        case "canyon": return 1
+        case "lagoon": return 2
+        case "peaks": return 3
+        default: return nil
+        }
+    }
 
     private let sr: Float
     private let samplesPerStep: Int
+    private let chaseSamplesPerStep: Int
     private var sampleInStep = 0
     private var step = 0
     private var level: Float = 0
+    private var duckLevel: Float = 1
 
     private var bassPhase: Float = 0
     private var bassFreq: Float = 0
     private var bassEnv: Float = 0
+    private var bassDecay: Float = 0.99985
     private var arpPhase: Float = 0
     private var arpFreq: Float = 0
     private var arpEnv: Float = 0
+    /// Pitch bend right after a pluck: the canyon twang settles down, the marimba blips, the koto rises.
+    private var bendEnv: Float = 0
+    /// State-variable filter for the canyon twang and the peaks koto.
+    private var pluckLow: Float = 0
+    private var pluckBand: Float = 0
     private var leadPhase: Float = 0
     private var leadFreq: Float = 0
     private var leadTarget: Float = 0
     private var leadEnv: Float = 0
     private var leadGate = false
+    private var leadLow: Float = 0
     private var vibPhase: Float = 0
     private var kickPhase: Float = 0
     private var kickFreq: Float = 0
@@ -595,6 +789,13 @@ final class MusicSynth {
     private var bellHigh: Float = 0
     private var blockEnv: Float = 0       // harvest: woodblock
     private var blockPhase: Float = 0
+    private var bubbleEnv: Float = 0      // lagoon: rising bubbles
+    private var bubblePhase: Float = 0
+    private var bubbleFreq: Float = 0
+    private var taikoEnv: Float = 0       // peaks: taiko
+    private var taikoPhase: Float = 0
+    private var taikoFreq: Float = 0
+    private var taikoLow: Float = 0
 
     /// Bass root per bar (MIDI): D, D, Bb, Bb, G, G, A, A.
     private static let roots = [50, 50, 46, 46, 43, 43, 45, 45]
@@ -609,16 +810,37 @@ final class MusicSynth {
     /// Harvest: a folky D, C, A minor, G turnaround.
     private static let harvestRoots = [50, 50, 48, 48, 45, 45, 43, 45]
     private static let harvestThirds = [4, 4, 4, 4, 3, 3, 4, 4]
+    /// Cardboard Canyon: a spaghetti-western E minor, C, D, B.
+    private static let canyonRoots = [52, 52, 48, 48, 50, 50, 47, 47]
+    private static let canyonThirds = [3, 3, 4, 4, 4, 4, 4, 4]
+    /// Ink Lagoon: a surfy A minor, F, G, E.
+    private static let lagoonRoots = [45, 45, 41, 41, 43, 43, 40, 40]
+    private static let lagoonThirds = [3, 3, 4, 4, 4, 4, 4, 4]
+    /// Origami Peaks: the koto picks notes of the D "in" scale (D Eb G A Bb) per 16th; 0 is a rest.
+    private static let peaksPattern = [74, 0, 69, 70, 0, 67, 0, 0, 74, 0, 75, 0, 69, 0, 62, 0]
     /// Lead over two bars: 100 fifth, 101 third, 102 root, 103 octave, -1 hold, -99 release.
     private static let leadPattern = [
         100, -1, -1, -1, -1, -1, -1, -1, 101, -1, -1, -1, 102, -1, -1, -1,
         103, -1, -1, -1, -1, -1, 100, -1, 101, -1, -1, -1, -99, -99, -99, -99
+    ]
+    /// Chase: D minor, Eb (a sinister flat second), Bb, A.
+    private static let chaseRoots = [50, 50, 51, 51, 46, 46, 45, 45]
+    private static let chaseThirds = [3, 3, 4, 4, 4, 4, 4, 4]
+    /// Chase bass: a pounding sixteenth pulse an octave down, with octave kicks.
+    private static let chaseBass = [0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0, 12, 0, 12]
+    /// Chase lead over two bars, in semitones above the bar's root: a creeping chromatic riff.
+    /// -1 holds, -99 releases.
+    private static let chaseLead = [
+        0, -1, -1, -1, 1, -1, 0, -1, 7, -1, -1, 6, -1, 5, -1, -1,
+        3, -1, -1, -1, 1, -1, 0, -1, -99, -99, 12, -1, 11, -1, 7, -1
     ]
 
     init(sampleRate: Double) {
         sr = Float(sampleRate)
         let bpm: Float = 112
         samplesPerStep = Int(sr * 60 / bpm / 4)
+        let chaseBpm: Float = 138
+        chaseSamplesPerStep = Int(sr * 60 / chaseBpm / 4)
     }
 
     private func freq(_ midi: Int) -> Float {
@@ -628,23 +850,72 @@ final class MusicSynth {
     private func triggerStep() {
         let bar = (step / 16) % 8
         let s = step % 16
-        let root = theme == 2 ? MusicSynth.winterRoots[bar] : theme == 1 ? MusicSynth.harvestRoots[bar] : MusicSynth.roots[bar]
-        let third = theme == 2 ? MusicSynth.winterThirds[bar] : theme == 1 ? MusicSynth.harvestThirds[bar] : MusicSynth.thirds[bar]
+        let holiday = theme != 0
+        let flavor = holiday ? 0 : world
+        let drive: Float = chase ? 1 : intensity
 
-        let bass = MusicSynth.bassPattern[s]
-        if bass > -99 {
-            bassFreq = freq(root + bass)
+        let root: Int
+        let third: Int
+        if chase {
+            root = MusicSynth.chaseRoots[bar]
+            third = MusicSynth.chaseThirds[bar]
+        } else if theme == 2 {
+            root = MusicSynth.winterRoots[bar]
+            third = MusicSynth.winterThirds[bar]
+        } else if theme == 1 {
+            root = MusicSynth.harvestRoots[bar]
+            third = MusicSynth.harvestThirds[bar]
+        } else if flavor == 1 {
+            root = MusicSynth.canyonRoots[bar]
+            third = MusicSynth.canyonThirds[bar]
+        } else if flavor == 2 {
+            root = MusicSynth.lagoonRoots[bar]
+            third = MusicSynth.lagoonThirds[bar]
+        } else {
+            root = MusicSynth.roots[bar]
+            third = MusicSynth.thirds[bar]
+        }
+
+        if chase {
+            bassFreq = freq(root - 12 + MusicSynth.chaseBass[s])
             bassEnv = 1
+            bassDecay = 0.99935
+        } else {
+            let bass = MusicSynth.bassPattern[s]
+            if bass > -99 {
+                bassFreq = freq(root + bass)
+                bassEnv = 1
+            }
+            bassDecay = 0.99985
         }
 
-        if s % 2 == 0 {
+        if flavor == 3 && !chase {
+            let note = MusicSynth.peaksPattern[s]
+            if note > 0 {
+                arpFreq = freq(note)
+                arpEnv = 1
+                bendEnv = 1
+            }
+        } else if chase || s % 2 == 0 {
+            // The chase runs the arpeggio in sixteenths, accenting the eighths.
             let arp = third == 3 ? MusicSynth.arpMinor : MusicSynth.arpMajor
-            arpFreq = freq(root + 12 + arp[(s / 2) % 4])
-            arpEnv = 1
+            let index = chase ? s % 4 : (s / 2) % 4
+            arpFreq = freq(root + 12 + arp[index])
+            arpEnv = chase && s % 2 == 1 ? 0.6 : 1
+            bendEnv = 1
         }
 
-        let code = MusicSynth.leadPattern[step % 32]
-        if intensity > 0.35 {
+        if chase {
+            let code = MusicSynth.chaseLead[step % 32]
+            if code >= 0 {
+                leadTarget = freq(root + 12 + code)
+                if leadFreq == 0 { leadFreq = leadTarget }
+                leadGate = true
+            } else if code == -99 {
+                leadGate = false
+            }
+        } else if drive > 0.35 {
+            let code = MusicSynth.leadPattern[step % 32]
             if code >= 100 {
                 let interval: Int
                 switch code {
@@ -663,23 +934,38 @@ final class MusicSynth {
             leadGate = false
         }
 
-        if s == 0 || s == 8 {
+        // Drums. The chase kicks on every beat; Origami Peaks swaps the kick for taiko outside a chase.
+        let taiko = flavor == 3
+        let kick = chase ? s % 4 == 0 : (!taiko && (s == 0 || s == 8))
+        if kick {
             kickEnv = 1
-            kickFreq = 150
+            kickFreq = chase ? 170 : 150
+        }
+        if taiko && (s == 0 || s == 8 || (!chase && (s == 6 || (drive > 0.5 && (s == 11 || s == 14))))) {
+            taikoEnv = 1
+            taikoFreq = 125
         }
         if s == 4 || s == 12 {
             snapEnv = 1
         }
-        if s % 2 == 1 && intensity > 0.6 {
+        if chase {
+            hatEnv = s % 2 == 1 ? 0.7 : 0.35
+        } else if s % 2 == 1 && drive > 0.6 {
             hatEnv = 0.6
         }
-        if theme == 2 && (s % 2 == 0 || intensity > 0.5) {
+        if theme == 2 && (s % 2 == 0 || drive > 0.5) {
             // Sleigh bells shake on every eighth, and every sixteenth once the storm is close.
             bellEnv = s % 4 == 0 ? 1 : 0.55
         }
-        if theme == 1 && (s == 6 || s == 14 || (s == 10 && intensity > 0.5)) {
+        if theme == 1 && (s == 6 || s == 14 || (s == 10 && drive > 0.5)) {
             blockEnv = 1
             blockPhase = 0
+        }
+        if flavor == 2 && (s == 3 || s == 11 || (drive > 0.5 && s == 7)) {
+            // Ink bubbles rise from a slightly different pitch each time.
+            bubbleEnv = 1
+            bubblePhase = 0
+            bubbleFreq = 520 + Float(noiseState & 255) * 1.6
         }
 
         step = (step + 1) % 128
@@ -688,21 +974,34 @@ final class MusicSynth {
     func render(_ frames: Int, into out: UnsafeMutablePointer<Float>) {
         let twoPi: Float = 2 * .pi
         let target: Float = playing ? 1 : 0
-        let leadLevel = min(1, intensity * 1.4)
+        let chasing = chase
+        let drive: Float = chasing ? 1 : intensity
+        let leadLevel = min(1, drive * 1.4)
+        let stepLength = chasing ? chaseSamplesPerStep : samplesPerStep
+        let flavor = theme != 0 ? 0 : world
+        // How far each world's pluck bends right after it's struck.
+        let bend: Float = flavor == 1 ? 0.012 : flavor == 2 ? 0.03 : flavor == 3 ? -0.015 : 0
+        let duckTarget = duck
 
         for i in 0..<frames {
             if sampleInStep == 0 && playing { triggerStep() }
             sampleInStep += 1
-            if sampleInStep >= samplesPerStep { sampleInStep = 0 }
+            if sampleInStep >= stepLength { sampleInStep = 0 }
             level += (target - level) * 0.0004
+            duckLevel += (duckTarget - duckLevel) * 0.0003
 
             bassPhase += bassFreq / sr
             if bassPhase >= 1 { bassPhase -= 1 }
             let triangle = 4 * abs(bassPhase - 0.5) - 1
-            bassEnv *= 0.99985
+            bassEnv *= bassDecay
             var mix = triangle * bassEnv * 0.5
+            if chasing {
+                // A little square grit makes the low pulse pound.
+                mix += (bassPhase < 0.5 ? 0.16 : -0.16) * bassEnv
+            }
 
-            arpPhase += arpFreq / sr
+            bendEnv *= 0.9993
+            arpPhase += arpFreq * (1 + bend * bendEnv) / sr
             if arpPhase >= 1 { arpPhase -= 1 }
             if theme == 2 {
                 // Glockenspiel: a sine with a bright inharmonic overtone, ringing a little longer.
@@ -714,20 +1013,53 @@ final class MusicSynth {
                 let pluck = 4 * abs(arpPhase - 0.5) - 1
                 arpEnv *= 0.99935
                 mix += pluck * arpEnv * 0.16
+            } else if flavor == 1 {
+                // Canyon twang: a saw through a resonant filter that snaps shut, like a bent guitar string.
+                let saw = 2 * arpPhase - 1
+                let f = twoPi * (400 + 3600 * arpEnv * arpEnv) / sr
+                pluckLow += f * pluckBand
+                let high = saw - pluckLow - 0.3 * pluckBand
+                pluckBand += f * high
+                arpEnv *= 0.99945
+                mix += pluckLow * arpEnv * 0.13
+            } else if flavor == 2 {
+                // Lagoon marimba: a round sine with a quick fourth-harmonic knock on the strike.
+                let bar = sinf(twoPi * arpPhase) + 0.35 * arpEnv * sinf(twoPi * arpPhase * 4)
+                arpEnv *= 0.99925
+                mix += bar * arpEnv * 0.15
+            } else if flavor == 3 {
+                // Peaks koto: a bright filtered pluck that rings, rising into pitch.
+                let saw = 2 * arpPhase - 1
+                let f = twoPi * (900 + 3600 * arpEnv * arpEnv) / sr
+                pluckLow += f * pluckBand
+                let high = saw - pluckLow - 0.55 * pluckBand
+                pluckBand += f * high
+                arpEnv *= 0.9996
+                mix += (pluckLow * 0.8 + pluckBand * 0.4) * arpEnv * 0.13
             } else {
                 let square: Float = arpPhase < 0.5 ? 1 : -1
                 arpEnv *= 0.99955
                 mix += square * arpEnv * 0.1
             }
 
-            leadFreq += (leadTarget - leadFreq) * 0.0008
-            vibPhase += 5.5 / sr
-            if vibPhase >= 1 { vibPhase -= 1 }
-            let vibrato = 1 + 0.012 * sinf(twoPi * vibPhase)
-            leadPhase += leadFreq * vibrato / sr
-            if leadPhase >= 1 { leadPhase -= 1 }
-            leadEnv += ((leadGate ? 1 : 0) - leadEnv) * 0.0006
-            mix += sinf(twoPi * leadPhase) * leadEnv * 0.16 * leadLevel
+            if chasing {
+                // Menacing lead: a darker, filtered saw that slides between notes.
+                leadFreq += (leadTarget - leadFreq) * 0.002
+                leadPhase += leadFreq / sr
+                if leadPhase >= 1 { leadPhase -= 1 }
+                leadLow += (2 * leadPhase - 1 - leadLow) * 0.12
+                leadEnv += ((leadGate ? 1 : 0) - leadEnv) * 0.002
+                mix += leadLow * leadEnv * 0.2
+            } else {
+                leadFreq += (leadTarget - leadFreq) * 0.0008
+                vibPhase += 5.5 / sr
+                if vibPhase >= 1 { vibPhase -= 1 }
+                let vibrato = 1 + 0.012 * sinf(twoPi * vibPhase)
+                leadPhase += leadFreq * vibrato / sr
+                if leadPhase >= 1 { leadPhase -= 1 }
+                leadEnv += ((leadGate ? 1 : 0) - leadEnv) * 0.0006
+                mix += sinf(twoPi * leadPhase) * leadEnv * 0.16 * leadLevel
+            }
 
             if kickEnv > 0.001 {
                 kickFreq += (45 - kickFreq) * 0.0012
@@ -766,8 +1098,24 @@ final class MusicSynth {
                 mix += sinf(twoPi * blockPhase) * blockEnv * 0.22
                 blockEnv *= 0.9975
             }
+            if bubbleEnv > 0.001 {
+                bubbleFreq *= 1.00012
+                bubblePhase += bubbleFreq / sr
+                if bubblePhase >= 1 { bubblePhase -= 1 }
+                mix += sinf(twoPi * bubblePhase) * bubbleEnv * 0.07
+                bubbleEnv *= 0.9992
+            }
+            if taikoEnv > 0.001 {
+                // A deep drum: a falling sine body plus a soft thump of low noise.
+                taikoFreq += (58 - taikoFreq) * 0.0006
+                taikoPhase += taikoFreq / sr
+                if taikoPhase >= 1 { taikoPhase -= 1 }
+                taikoLow += (noise - taikoLow) * 0.05
+                mix += (sinf(twoPi * taikoPhase) * 0.6 + taikoLow * 1.2) * taikoEnv * 0.55
+                taikoEnv *= 0.99965
+            }
 
-            out[i] = tanhf(mix * 0.9) * volume * level
+            out[i] = tanhf(mix * 0.9) * volume * level * duckLevel
         }
     }
 }

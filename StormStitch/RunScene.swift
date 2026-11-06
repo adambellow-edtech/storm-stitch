@@ -1021,9 +1021,12 @@ final class RunScene: SKScene {
 
     func endRun(caught: Bool) {
         eyeGloat = true
+        let chaseFinale = shredderChase != nil
         audio.setMusic(playing: false)
-        audio.play(.gameOver, volume: 0.6)
-        // The Shredder wins: one last strike, an evil laugh, then the defeat sting.
+        audio.setChase(false)
+        // The Shredder wins: one last strike, an evil laugh, then one sting. A chase finale gets the
+        // Shredder's own defeat sting; any other run gets the playful fail sting. (The old quick
+        // game-over blip is retired so the stings never double up.)
         lightningCooldown = 0
         lightningStrike(power: 3)
         run(.sequence([
@@ -1035,7 +1038,11 @@ final class RunScene: SKScene {
             .wait(forDuration: 3.5),
             .run { [weak self] in
                 guard let self, self.state != .running else { return }
-                self.audio.play(.defeat, volume: 0.8)
+                if chaseFinale {
+                    self.audio.play(.defeat, volume: 0.8)
+                } else {
+                    self.audio.playSting(.fail)
+                }
             }
         ]), withKey: "defeatAudio")
         haptics.gameOver()
@@ -1045,7 +1052,11 @@ final class RunScene: SKScene {
     func finishRun() {
         eyeDefeated = true
         audio.setMusic(playing: false)
-        audio.play(.finish)
+        audio.setChase(false)
+        // A win gets the victory fanfare; reaching the gate behind a holiday rival is still a loss.
+        var won = true
+        if case .race(let holiday) = mode { won = spools > holiday.rivalTarget }
+        audio.playSting(won ? .victory : .fail)
         haptics.success()
         concludeRun(caught: false, finished: true)
     }
@@ -1248,10 +1259,13 @@ final class RunScene: SKScene {
         let freeLane = lanes.removeFirst()
         let hazardCount = Double.random(in: 0...1, using: &rng) < config.doubleChance ? 2 : 1
         let allowed: [HazardKind] = elapsed < config.overheadFrom ? [.low, .crate] : HazardKind.allCases
+        // A Shredder chase can lean on its world's signature hazards.
+        let chaseMix = shredderChase?.hazardMix?.filter { allowed.contains($0) } ?? []
+        let pool = chaseMix.isEmpty ? allowed : chaseMix
 
         var lowLane: Int?
         for i in 0..<hazardCount {
-            let kind = allowed.randomElement(using: &rng) ?? .low
+            let kind = pool.randomElement(using: &rng) ?? .low
             addHazard(kind, lane: lanes[i], z: z)
             if kind == .low { lowLane = lanes[i] }
         }
