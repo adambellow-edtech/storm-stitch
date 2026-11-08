@@ -713,6 +713,7 @@ final class RunScene: SKScene {
             colorCrop.maskNode = PaperGround.hasWash(texturedColor) ? nil : maskRoot
             applyFog()
         } else {
+        texturedColor = nil
         colorCrop.maskNode = maskRoot
         let grayGround = SKSpriteNode(color: UIColor(hex: 0x8A8C99), size: groundRect)
         grayGround.anchorPoint = CGPoint(x: 0.5, y: 1)
@@ -2009,21 +2010,25 @@ final class RunScene: SKScene {
 
         // The watercolor wash: each patch is a bloom that soaks outward, nearest ones first.
         if PaperGround.hasWash(texturedColor) {
-            if fullyStitched { washFront = min(80, washFront + dt * 30) }
+            // Past the visible ground everything is fog, so once the wash gets there it covers the horizon too.
+            if fullyStitched { washFront = washFront >= 64 ? 1e6 : washFront + dt * 30 }
             let blooms = patches
-                .filter { $0.z > -8 - $0.radius && $0.z < spawnZ + 4 }
+                .filter { $0.z + $0.radius > -3 && $0.z < spawnZ + 4 }
                 .sorted { $0.z < $1.z }
                 .prefix(PaperGround.washSlots)
                 .map { patch -> SIMD4<Float> in
                     let grow = min(1, patch.age / max(patch.growTime, 0.01))
                     let eased = 1 - pow(1 - grow, 2.2)
-                    return SIMD4<Float>(Float(patch.x), Float(patch.z), Float(patch.radius * eased), 0)
+                    // A touch larger than the patch, since the soft edge eats into the outside of each bloom.
+                    return SIMD4<Float>(Float(patch.x), Float(patch.z), Float(patch.radius * 1.25 * eased), 0)
                 }
-            PaperGround.setWash(texturedColor, blooms: Array(blooms), front: Float(washFront))
+            PaperGround.setWash(texturedColor, blooms: blooms, front: Float(washFront))
         }
 
-        // Stitched patches: flat on the ground, so squashed by perspective.
-        for patch in patches {
+        // Stitched patches: flat on the ground, so squashed by perspective. Only the flat-color
+        // fallback draws these masks; the wash paints straight from the patch list above.
+        let washing = PaperGround.hasWash(texturedColor)
+        for patch in patches where !washing {
             guard let p = project(x: patch.x, z: patch.z) else {
                 patch.mask.isHidden = true
                 patch.stitch?.isHidden = true
