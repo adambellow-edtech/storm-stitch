@@ -25,7 +25,9 @@ enum PaperGround {
         let ground = SKTexture(image: groundImage)
         ground.filteringMode = .linear
 
-        let sprite = SKSpriteNode(texture: ground, size: rect.size)
+        // The colored ground draws only through its shader. Its own texture is clear, so if the shader
+        // ever failed to compile it would show nothing (the gray ground) instead of a flat sheet over the sky.
+        let sprite = SKSpriteNode(texture: colored ? clearTexture : ground, size: rect.size)
         sprite.anchorPoint = .zero
         sprite.position = rect.origin
 
@@ -61,8 +63,10 @@ enum PaperGround {
         if let washNoise {
             shader.addUniform(SKUniform(name: "u_noise", texture: washNoise))
             shader.addUniform(SKUniform(name: "u_front", float: -20))
-            for i in 0..<washSlots {
-                shader.addUniform(SKUniform(name: "u_p\(i)", vectorFloat4: SIMD4<Float>(0, -100, 0, 0)))
+            // The blooms ride in four 4x4 matrices (four blooms each, one per column): SpriteKit gives
+            // every uniform its own GPU buffer slot, and there are only about 30, so they must be packed.
+            for i in 0..<washSlots / 4 {
+                shader.addUniform(SKUniform(name: "u_b\(i)", matrixFloat4x4: emptyBlooms))
             }
         }
         sprite.shader = shader
@@ -101,12 +105,23 @@ enum PaperGround {
         sprite?.shader?.uniformNamed("u_offset")?.floatValue = Float(distance.truncatingRemainder(dividingBy: 12.0))
     }
 
+    private static let clearTexture: SKTexture = {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2), format: format).image { _ in }
+        return SKTexture(image: image)
+    }()
+
     /// How many color blooms the shader can paint at once (the nearest ones win).
-    static let washSlots = 32
+    static let washSlots = 16
+
+    private static let emptyBlooms = simd_float4x4(SIMD4<Float>(0, -100, 0, 0), SIMD4<Float>(0, -100, 0, 0),
+                                                   SIMD4<Float>(0, -100, 0, 0), SIMD4<Float>(0, -100, 0, 0))
 
     /// True when this sprite paints with the watercolor wash.
     static func hasWash(_ sprite: SKSpriteNode?) -> Bool {
-        sprite?.shader?.uniformNamed("u_p0") != nil
+        sprite?.shader?.uniformNamed("u_b0") != nil
     }
 
     /// Sets the blooms to paint, each (x, z, radius, 0) in world units relative to the camera,
@@ -115,11 +130,13 @@ enum PaperGround {
         guard let shader = sprite?.shader else { return }
         if washUniforms.isEmpty || washShader !== shader {
             washShader = shader
-            washUniforms = (0..<washSlots).compactMap { shader.uniformNamed("u_p\($0)") }
+            washUniforms = (0..<washSlots / 4).compactMap { shader.uniformNamed("u_b\($0)") }
             washFront = shader.uniformNamed("u_front")
         }
-        for (i, uniform) in washUniforms.enumerated() {
-            uniform.vectorFloat4Value = i < blooms.count ? blooms[i] : SIMD4<Float>(0, -100, 0, 0)
+        let empty = SIMD4<Float>(0, -100, 0, 0)
+        for (m, uniform) in washUniforms.enumerated() {
+            func bloom(_ c: Int) -> SIMD4<Float> { m * 4 + c < blooms.count ? blooms[m * 4 + c] : empty }
+            uniform.matrixFloat4x4Value = simd_float4x4(bloom(0), bloom(1), bloom(2), bloom(3))
         }
         washFront?.floatValue = front
     }
@@ -132,14 +149,13 @@ enum PaperGround {
     /// a paper-grain noise that moves with the ground roughens the edge so it bleeds like paint,
     /// and a faint darker rim marks where the wash is still wet.
     private static let washSource: String = {
-        let blooms = (0..<washSlots).map { "    wash = max(wash, bloom(u_p\($0), x, z));" }.joined(separator: "\n")
+        // Written out per slot (no helper function), which SpriteKit's shader translator handles reliably.
+        // Each bloom is solid in its middle half and fades to nothing at its radius; empty slots have radius 0.
+        let blooms = (0..<washSlots).map { i -> String in
+            let p = "u_b\(i / 4)[\(i % 4)]"
+            return "    wash = max(wash, step(0.001, \(p).z) * clamp((1.0 - length(vec2(x - \(p).x, z - \(p).y)) / max(\(p).z, 0.001)) * 2.0, 0.0, 1.0));"
+        }.joined(separator: "\n")
         return """
-        float bloom(vec4 p, float x, float z) {
-            if (p.z <= 0.001) { return 0.0; }
-            float d = length(vec2(x - p.x, z - p.y)) / p.z;
-            return clamp((1.0 - d) / 0.5, 0.0, 1.0);
-        }
-
         void main() {
             float px = u_x0 + v_tex_coord.x * u_w;
             float py = u_y0 + v_tex_coord.y * u_h;
