@@ -332,6 +332,13 @@ extension RunScene {
             }
         }
 
+        // A door that got past the pick without being resolved (a rewind can put doors back after
+        // their gate closed) tears away instead of sweeping past the camera at giant size.
+        for door in things where door.isPowerDoor && !door.retired && door.z < PowerTuning.resolveZ - 0.4 {
+            confettiBurst(at: screenPoint(ofWorld: door.sprite.position))
+            retire(door)
+        }
+
         let signature = powers.taken.map { "\($0.rawValue)\(powerLevel($0))\(powerIsSpent($0) ? 0 : 1)" }.joined()
         if signature != powers.rowSignature { refreshPowerRow() }
     }

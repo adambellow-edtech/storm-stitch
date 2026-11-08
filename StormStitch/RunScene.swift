@@ -2089,11 +2089,15 @@ final class RunScene: SKScene {
                     if t >= 1 { thing.popTime = -1 }
                 }
             case .gate:
-                break
+                // The seam gate and its stitches always sit behind the runner, even once the runner
+                // has stopped inside it at the finish (its stitches draw up to 6 above the gate).
+                sprite.zPosition = min(sprite.zPosition, CGFloat((spawnZ + 10) * 5) - 8)
             case .powerDoor:
                 // Doors stand up out of the page early, so there's time to read them.
                 let rise = max(0, min(1, (spawnZ - 2 - thing.z) / 4))
                 yScale *= CGFloat(easeOutBack(rise))
+                // Never let a door loom over the camera: it fades out as it reaches the runner.
+                sprite.alpha = min(sprite.alpha, CGFloat(max(0, min(1, thing.z / 0.6))))
             }
             sprite.xScale = xScale
             sprite.yScale = yScale
