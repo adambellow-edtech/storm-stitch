@@ -222,6 +222,11 @@ final class RunScene: SKScene {
     var streakTimer = 0.0
     var meter = 0.0
     var fullyStitched = false
+    /// How much color the sky and hills show. Eases toward the meter (quickly up, slowly down)
+    /// so a hit never flashes the world gray.
+    var skyColorShown: CGFloat = 0
+    /// For the finish: the world is washed in color up to this distance ahead, rolling outward.
+    var washFront = -20.0
     var stormDistance = 6.0
     var invulnerable = 0.0
     var timeScale = 1.0
@@ -704,8 +709,11 @@ final class RunScene: SKScene {
         if let texturedGray, let texturedColor {
             groundLayer.addChild(texturedGray)
             colorLayer.addChild(texturedColor)
+            // The color ground paints itself in with the watercolor wash, so it needs no crop mask.
+            colorCrop.maskNode = PaperGround.hasWash(texturedColor) ? nil : maskRoot
             applyFog()
         } else {
+        colorCrop.maskNode = maskRoot
         let grayGround = SKSpriteNode(color: UIColor(hex: 0x8A8C99), size: groundRect)
         grayGround.anchorPoint = CGPoint(x: 0.5, y: 1)
         grayGround.position = CGPoint(x: w / 2, y: horizonY)
@@ -911,6 +919,8 @@ final class RunScene: SKScene {
             patch.stitch?.removeFromParent()
         }
         patches.removeAll()
+        washFront = -20
+        skyColorShown = 0
         fxRoot.removeAllChildren()
         camRig.removeAction(forKey: "shake")
 
@@ -1474,7 +1484,7 @@ final class RunScene: SKScene {
         let chance = fullyStitched ? 1.0 : meter * 1.15
         guard Double.random(in: 0...1) < chance else { return }
         let radius = fullyStitched ? Double.random(in: 3.5...6) : Double.random(in: 1.2...2.6) * (0.6 + meter)
-        addPatch(x: Double.random(in: -5...5), z: z, radius: radius, withStitch: false, growTime: 0.01)
+        addPatch(x: Double.random(in: -5...5), z: z, radius: radius, withStitch: false, growTime: 0.8)
     }
 
     func addPatch(x: Double, z: Double, radius: Double, withStitch: Bool, growTime: Double) {
@@ -1484,7 +1494,8 @@ final class RunScene: SKScene {
         maskRoot.addChild(mask)
 
         var stitch: SKSpriteNode?
-        if withStitch {
+        // The watercolor wash has no stitched outline; the flat fallback keeps it.
+        if withStitch && !PaperGround.hasWash(texturedColor) {
             let stitchArt = art.patchStitch(variant: variant)
             let sprite = SKSpriteNode(texture: stitchArt.texture, size: stitchArt.size)
             stitchLayer.addChild(sprite)
@@ -1495,27 +1506,47 @@ final class RunScene: SKScene {
 
     // MARK: Stitching
 
-    /// Color floods in around a point as you collect thread.
+    /// Color soaks into the page around a point as you collect thread, like a drop of watercolor.
     func stitchBurst(atX x: Double, z: Double) {
+        let slow = Motion.reduced ? 1.5 : 1.0
         addPatch(x: x + Double.random(in: -0.4...0.4), z: z + Double.random(in: 0.5...2.0),
-                 radius: Double.random(in: 0.9...1.4), withStitch: true, growTime: 0.25)
+                 radius: Double.random(in: 1.1...1.6), withStitch: true, growTime: 1.0 * slow)
         if Double.random(in: 0...1) < 0.5 {
             addPatch(x: x + Double.random(in: -3...3), z: z + Double.random(in: 2...8),
-                     radius: Double.random(in: 1.0...2.0), withStitch: true, growTime: 0.3)
+                     radius: Double.random(in: 1.2...2.2), withStitch: true, growTime: 1.2 * slow)
         }
-        for thing in things {
-            guard case .scenery = thing.kind, !thing.colored else { continue }
-            if thing.z > -1 && thing.z < 12 && Double.random(in: 0...1) < 0.3 {
-                colorize(thing)
+        // The nearest gray trees and flowers ahead fill in too, closest first, a couple at a time.
+        let nearby = things
+            .filter { thing in
+                guard case .scenery = thing.kind, !thing.colored else { return false }
+                return thing.z > -1 && thing.z < 12
             }
-        }
+            .sorted { abs($0.z - z) < abs($1.z - z) }
+            .prefix(2)
+        for (i, thing) in nearby.enumerated() { colorize(thing, delay: 0.15 + Double(i) * 0.25) }
     }
 
-    func colorize(_ thing: Thing) {
+    /// Fades a gray tree, bush or flower into its color picture, like paint soaking in.
+    func colorize(_ thing: Thing, delay: Double = 0) {
         guard case .scenery(let kind, let variant) = thing.kind, !thing.colored else { return }
         thing.colored = true
-        thing.sprite.texture = sceneryArt(kind, variant: variant, colored: true).texture
-        thing.popTime = 0
+        let color = sceneryArt(kind, variant: variant, colored: true)
+        let sprite = thing.sprite
+        let paint = SKSpriteNode(texture: color.texture, size: sprite.size)
+        paint.anchorPoint = sprite.anchorPoint
+        paint.alpha = 0
+        paint.zPosition = 0.01
+        sprite.addChild(paint)
+        let fade = SKAction.fadeIn(withDuration: Motion.reduced ? 1.4 : 0.9)
+        fade.timingMode = .easeInEaseOut
+        paint.run(.sequence([
+            .wait(forDuration: delay),
+            fade,
+            .run { [weak sprite, weak paint] in
+                sprite?.texture = color.texture
+                paint?.removeFromParent()
+            }
+        ]))
     }
 
     func worldFullyStitched() {
@@ -1531,7 +1562,8 @@ final class RunScene: SKScene {
             }
             z += 5
         }
-        for thing in things { colorize(thing) }
+        washFront = -8
+        for thing in things { colorize(thing, delay: max(0, thing.z) / 30) }
         popText("WORLD STITCHED!", size: 34, color: Palette.stitchGold, at: CGPoint(x: size.width / 2, y: size.height * 0.62), rise: 40, life: 1.6)
         sparkleBurst(at: CGPoint(x: size.width / 2, y: size.height * 0.5), count: 60, spread: .pi * 2, speed: 380)
     }
@@ -1695,8 +1727,8 @@ final class RunScene: SKScene {
         confettiBurst(at: point)
         flash.removeAllActions()
         flash.color = .white
-        flash.alpha = 0.45 * (Motion.reduced ? Motion.reducedStrength : 1)
-        flash.run(.fadeOut(withDuration: 0.25))
+        flash.alpha = 0.2 * (Motion.reduced ? Motion.reducedStrength : 1)
+        flash.run(.fadeOut(withDuration: 0.35))
 
         if heartsLeft >= 0 && heartsLeft < hearts.count {
             let heart = hearts[heartsLeft]
@@ -1973,6 +2005,21 @@ final class RunScene: SKScene {
                 dash.size = CGSize(width: max(1.5, 7 * (a.scale + b.scale) / 2), height: hypot(dx, dy))
                 dash.zRotation = atan2(dy, dx) - .pi / 2
             }
+        }
+
+        // The watercolor wash: each patch is a bloom that soaks outward, nearest ones first.
+        if PaperGround.hasWash(texturedColor) {
+            if fullyStitched { washFront = min(80, washFront + dt * 30) }
+            let blooms = patches
+                .filter { $0.z > -8 - $0.radius && $0.z < spawnZ + 4 }
+                .sorted { $0.z < $1.z }
+                .prefix(PaperGround.washSlots)
+                .map { patch -> SIMD4<Float> in
+                    let grow = min(1, patch.age / max(patch.growTime, 0.01))
+                    let eased = 1 - pow(1 - grow, 2.2)
+                    return SIMD4<Float>(Float(patch.x), Float(patch.z), Float(patch.radius * eased), 0)
+                }
+            PaperGround.setWash(texturedColor, blooms: Array(blooms), front: Float(washFront))
         }
 
         // Stitched patches: flat on the ground, so squashed by perspective.
@@ -2286,7 +2333,11 @@ final class RunScene: SKScene {
 
     func renderSkyAndStorm(dt: Double) {
         let m = CGFloat(fullyStitched ? 1 : meter)
-        let colorAmount = min(1, m * 1.2)
+        let target = min(1, m * 1.2)
+        // Ease toward the meter: color seeps in over about two seconds and drains back very slowly.
+        let rate: CGFloat = target > skyColorShown ? 0.5 : 0.08
+        skyColorShown += max(-rate * CGFloat(dt), min(rate * CGFloat(dt), target - skyColorShown))
+        let colorAmount = skyColorShown
         skyBlue.alpha = colorAmount
         hillsColor.alpha = colorAmount
         backdropColor?.alpha = colorAmount

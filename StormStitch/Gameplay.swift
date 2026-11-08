@@ -484,10 +484,8 @@ extension RunScene {
         fullyStitched = true
         audio.play(.stitchFull)
         haptics.success()
-        flash.removeAllActions()
-        flash.color = .white
-        flash.alpha = 0.7 * (Motion.reduced ? Motion.reducedStrength : 1)
-        flash.run(.fadeOut(withDuration: 0.6))
+        // No white flash: the color washes out across the world from the player instead.
+        washFront = -8
         var z = -2.0
         while z < spawnZ {
             for x in [-4.0, 0.0, 4.0] {
@@ -496,7 +494,7 @@ extension RunScene {
             }
             z += 4.5
         }
-        for thing in things { colorize(thing) }
+        for thing in things { colorize(thing, delay: max(0, thing.z) / 30) }
         for i in 0..<5 {
             let point = CGPoint(x: size.width * (0.15 + 0.175 * CGFloat(i)), y: size.height * 0.55)
             confettiBurst(at: point)
@@ -637,7 +635,7 @@ extension RunScene {
             invulnerable = max(invulnerable, 1.5)
             flash.removeAllActions()
             flash.color = Palette.paper
-            flash.alpha = 0.55
+            flash.alpha = 0.3 * (Motion.reduced ? Motion.reducedStrength : 1)
             flash.run(.fadeOut(withDuration: 0.5))
             popText("Page Fold!", size: 28, color: .white, at: playerScreenPoint(offsetY: 140), rise: 30, life: 0.9)
         }
@@ -724,6 +722,7 @@ extension RunScene {
         velocityY = snap.velocityY
         nextRowIn = snap.nextRowIn
         fullyStitched = snap.fullyStitched
+        if !fullyStitched { washFront = -20 }
         gateSpawned = snap.gateSpawned
         rng = snap.rng
         powers = snap.powers
@@ -741,7 +740,7 @@ extension RunScene {
         // A sepia flash and a reverse whoosh.
         flash.removeAllActions()
         flash.color = UIColor(hex: 0xE8C88A)
-        flash.alpha = 0.6
+        flash.alpha = 0.3 * (Motion.reduced ? Motion.reducedStrength : 1)
         flash.run(.fadeOut(withDuration: 0.5))
         audio.play(.whoosh)
         popText("Rewind!", size: 34, color: Palette.stitchGold, at: playerScreenPoint(offsetY: 150), rise: 30, life: 1)
