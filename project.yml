@@ -14,6 +14,9 @@ targets:
       path: StormStitch/Info.plist
       properties:
         CFBundleDisplayName: Storm Stitch
+        # Without these, XcodeGen writes 1.0 (1) into the plist and the build settings below are ignored.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
